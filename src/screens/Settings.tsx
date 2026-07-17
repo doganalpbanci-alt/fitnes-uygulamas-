@@ -30,7 +30,15 @@ export default function Settings() {
   const importData = async (file: File) => {
     try {
       const data = JSON.parse(await file.text());
-      if (!data.sessions || !data.exercises) throw new Error('geçersiz dosya');
+      const isValid =
+        data &&
+        typeof data === 'object' &&
+        Array.isArray(data.exercises) &&
+        Array.isArray(data.sessions) &&
+        (data.templates == null || Array.isArray(data.templates)) &&
+        (data.schedule == null || Array.isArray(data.schedule)) &&
+        (data.fasts == null || Array.isArray(data.fasts));
+      if (!isValid) throw new Error('geçersiz dosya');
       await db.transaction('rw', [db.exercises, db.templates, db.schedule, db.sessions, db.fasts], async () => {
         await Promise.all([db.exercises.clear(), db.templates.clear(), db.schedule.clear(), db.sessions.clear(), db.fasts.clear()]);
         await db.exercises.bulkAdd(data.exercises);
@@ -50,6 +58,8 @@ export default function Settings() {
     if (v > 0) {
       localStorage.setItem('weightIncrementKg', String(v));
       setMsg(`✓ Artış önerisi ${v} kg olarak kaydedildi.`);
+    } else {
+      setMsg('✗ Artış miktarı 0’dan büyük bir sayı olmalı.');
     }
   };
 
@@ -84,6 +94,8 @@ export default function Settings() {
             <input
               type="number"
               inputMode="decimal"
+              min={0.5}
+              step={0.5}
               value={inc}
               onChange={(e) => setInc(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
@@ -134,7 +146,12 @@ export default function Settings() {
 
         <div className="px-1 pt-2 text-xs text-slate-500">
           FitTakip v0.1 · Egzersiz görselleri:{' '}
-          <a className="underline" href="https://github.com/yuhonas/free-exercise-db">
+          <a
+            className="underline"
+            href="https://github.com/yuhonas/free-exercise-db"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             free-exercise-db
           </a>{' '}
           (MIT)

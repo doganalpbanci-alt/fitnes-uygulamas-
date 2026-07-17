@@ -187,8 +187,13 @@ export default function TemplateEditor({ id }: { id?: number }) {
                   <input
                     type="number"
                     inputMode="numeric"
+                    min={0}
                     value={it.targetDurationMin ?? ''}
-                    onChange={(e) => update(i, { targetDurationMin: Number(e.target.value) || undefined })}
+                    onChange={(e) =>
+                      update(i, {
+                        targetDurationMin: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
                   />
                 </label>
@@ -199,6 +204,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
                     <input
                       type="number"
                       inputMode="numeric"
+                      min={1}
                       value={it.targetSets}
                       onChange={(e) => update(i, { targetSets: Math.max(1, Number(e.target.value) || 1) })}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
@@ -209,8 +215,9 @@ export default function TemplateEditor({ id }: { id?: number }) {
                     <input
                       type="number"
                       inputMode="numeric"
+                      min={1}
                       value={it.repMin}
-                      onChange={(e) => update(i, { repMin: Number(e.target.value) || 1 })}
+                      onChange={(e) => update(i, { repMin: Math.max(1, Number(e.target.value) || 1) })}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
@@ -219,8 +226,9 @@ export default function TemplateEditor({ id }: { id?: number }) {
                     <input
                       type="number"
                       inputMode="numeric"
+                      min={1}
                       value={it.repMax}
-                      onChange={(e) => update(i, { repMax: Number(e.target.value) || 1 })}
+                      onChange={(e) => update(i, { repMax: Math.max(1, Number(e.target.value) || 1) })}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
@@ -229,8 +237,13 @@ export default function TemplateEditor({ id }: { id?: number }) {
                     <input
                       type="number"
                       inputMode="decimal"
+                      min={0}
                       value={it.startWeightKg ?? ''}
-                      onChange={(e) => update(i, { startWeightKg: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      onChange={(e) =>
+                        update(i, {
+                          startWeightKg: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0),
+                        })
+                      }
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
