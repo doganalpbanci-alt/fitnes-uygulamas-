@@ -243,6 +243,7 @@ function StartFast() {
           <input
             type="number"
             inputMode="numeric"
+            min={1}
             placeholder="kaç saat?"
             value={customHours}
             onClick={(e) => e.stopPropagation()}

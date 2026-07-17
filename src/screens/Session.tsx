@@ -191,9 +191,12 @@ export default function Session({ templateId }: { templateId: number }) {
                             <input
                               type="number"
                               inputMode="decimal"
+                              min={0}
                               value={set.durationMin ?? ''}
                               onChange={(e) =>
-                                setVal(ei, si, { durationMin: e.target.value === '' ? undefined : Number(e.target.value) })
+                                setVal(ei, si, {
+                                  durationMin: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0),
+                                })
                               }
                               className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-center"
                             />
@@ -205,10 +208,13 @@ export default function Session({ templateId }: { templateId: number }) {
                               <input
                                 type="number"
                                 inputMode="numeric"
+                                min={0}
                                 placeholder="—"
                                 value={set.reps ?? ''}
                                 onChange={(e) =>
-                                  setVal(ei, si, { reps: e.target.value === '' ? undefined : Number(e.target.value) })
+                                  setVal(ei, si, {
+                                    reps: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value) || 0)),
+                                  })
                                 }
                                 className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center"
                               />
@@ -218,10 +224,13 @@ export default function Session({ templateId }: { templateId: number }) {
                               <input
                                 type="number"
                                 inputMode="decimal"
+                                min={0}
                                 placeholder="—"
                                 value={set.weightKg ?? ''}
                                 onChange={(e) =>
-                                  setVal(ei, si, { weightKg: e.target.value === '' ? undefined : Number(e.target.value) })
+                                  setVal(ei, si, {
+                                    weightKg: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0),
+                                  })
                                 }
                                 className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center"
                               />
