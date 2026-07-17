@@ -6,7 +6,8 @@ export type View =
   | { t: 'tabs' }
   | { t: 'editTemplate'; id?: number }
   | { t: 'session'; templateId: number }
-  | { t: 'exerciseDetail'; exerciseId: string };
+  | { t: 'exerciseDetail'; exerciseId: string }
+  | { t: 'sessionSummary'; sessionId: number };
 
 interface NavState {
   tab: Tab;

@@ -6,6 +6,7 @@ import Progress, { ExerciseDetail } from './screens/Progress';
 import Settings from './screens/Settings';
 import TemplateEditor from './screens/TemplateEditor';
 import Session from './screens/Session';
+import WorkoutSummary from './screens/WorkoutSummary';
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'home', label: 'Ana', icon: '🏠' },
@@ -21,6 +22,7 @@ export default function App() {
   if (view.t === 'editTemplate') return <TemplateEditor id={view.id} />;
   if (view.t === 'session') return <Session templateId={view.templateId} />;
   if (view.t === 'exerciseDetail') return <ExerciseDetail exerciseId={view.exerciseId} />;
+  if (view.t === 'sessionSummary') return <WorkoutSummary sessionId={view.sessionId} />;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
