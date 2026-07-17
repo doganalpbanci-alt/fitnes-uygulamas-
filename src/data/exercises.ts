@@ -63,6 +63,42 @@ export const SEED_EXERCISES: Exercise[] = [
     type: "resistance"
   },
   {
+    id: "Decline_Barbell_Bench_Press",
+    name: "Alçalan Bench Press (Halter)",
+    muscleGroup: "gogus",
+    type: "resistance"
+  },
+  {
+    id: "Decline_Dumbbell_Bench_Press",
+    name: "Alçalan Bench Press (Dambıl)",
+    muscleGroup: "gogus",
+    type: "resistance"
+  },
+  {
+    id: "Decline_Dumbbell_Flyes",
+    name: "Alçalan Dambıl Fly",
+    muscleGroup: "gogus",
+    type: "resistance"
+  },
+  {
+    id: "Flat_Bench_Cable_Flyes",
+    name: "Kablo Fly (Düz Bank)",
+    muscleGroup: "gogus",
+    type: "resistance"
+  },
+  {
+    id: "Incline_Cable_Flye",
+    name: "Eğimli Kablo Fly",
+    muscleGroup: "gogus",
+    type: "resistance"
+  },
+  {
+    id: "Incline_Cable_Chest_Press",
+    name: "Eğimli Kablo Göğüs Pres",
+    muscleGroup: "gogus",
+    type: "resistance"
+  },
+  {
     id: "Pullups",
     name: "Barfiks",
     muscleGroup: "sirt",
@@ -93,6 +129,12 @@ export const SEED_EXERCISES: Exercise[] = [
     type: "resistance"
   },
   {
+    id: "Bent_Over_Two-Dumbbell_Row",
+    name: "Dambıl Row (İki Kol)",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
     id: "Seated_Cable_Rows",
     name: "Oturarak Kablo Row",
     muscleGroup: "sirt",
@@ -107,6 +149,24 @@ export const SEED_EXERCISES: Exercise[] = [
   {
     id: "Romanian_Deadlift",
     name: "Romanian Deadlift",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
+    id: "Sumo_Deadlift",
+    name: "Sumo Deadlift",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
+    id: "Trap_Bar_Deadlift",
+    name: "Trap Bar Deadlift",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
+    id: "Rack_Pulls",
+    name: "Rack Pull",
     muscleGroup: "sirt",
     type: "resistance"
   },
@@ -131,6 +191,24 @@ export const SEED_EXERCISES: Exercise[] = [
   {
     id: "Straight-Arm_Dumbbell_Pullover",
     name: "Dambıl Pullover",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
+    id: "T-Bar_Row_with_Handle",
+    name: "T-Bar Row",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
+    id: "Close-Grip_Front_Lat_Pulldown",
+    name: "Lat Pulldown (Dar)",
+    muscleGroup: "sirt",
+    type: "resistance"
+  },
+  {
+    id: "Underhand_Cable_Pulldowns",
+    name: "Ters Kavrama Lat Pulldown",
     muscleGroup: "sirt",
     type: "resistance"
   },
@@ -201,6 +279,78 @@ export const SEED_EXERCISES: Exercise[] = [
     type: "resistance"
   },
   {
+    id: "Front_Squat_Clean_Grip",
+    name: "Front Squat",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Box_Squat",
+    name: "Box Squat",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Split_Squats",
+    name: "Split Squat",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Smith_Single-Leg_Split_Squat",
+    name: "Tek Bacak Split Squat (Smith)",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Barbell_Side_Split_Squat",
+    name: "Yan Split Squat",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Adductor",
+    name: "İç Bacak (Adductor)",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Thigh_Abductor",
+    name: "Dış Bacak (Abductor)",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Weighted_Sissy_Squat",
+    name: "Sissy Squat",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Zercher_Squats",
+    name: "Zercher Squat",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Donkey_Calf_Raises",
+    name: "Donkey Kalf",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "Glute_Kickback",
+    name: "Glute Kickback",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
+    id: "One-Legged_Cable_Kickback",
+    name: "Kablo Glute Kickback (Tek Bacak)",
+    muscleGroup: "bacak",
+    type: "resistance"
+  },
+  {
     id: "Barbell_Shoulder_Press",
     name: "Omuz Pres (Halter)",
     muscleGroup: "omuz",
@@ -239,6 +389,54 @@ export const SEED_EXERCISES: Exercise[] = [
   {
     id: "Arnold_Dumbbell_Press",
     name: "Arnold Pres",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Standing_Military_Press",
+    name: "Ayakta Askeri Pres",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Seated_Barbell_Military_Press",
+    name: "Oturarak Askeri Pres (Halter)",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Cable_Seated_Lateral_Raise",
+    name: "Kablo Lateral Raise (Oturarak)",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Cable_Rear_Delt_Fly",
+    name: "Kablo Arka Omuz Fly",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Machine_Shoulder_Military_Press",
+    name: "Makine Omuz Pres",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Cuban_Press",
+    name: "Cuban Press",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "External_Rotation",
+    name: "Dış Rotasyon (Omuz Sağlık)",
+    muscleGroup: "omuz",
+    type: "resistance"
+  },
+  {
+    id: "Push_Press",
+    name: "Push Press",
     muscleGroup: "omuz",
     type: "resistance"
   },
@@ -303,6 +501,66 @@ export const SEED_EXERCISES: Exercise[] = [
     type: "resistance"
   },
   {
+    id: "Zottman_Curl",
+    name: "Zottman Curl",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Spider_Curl",
+    name: "Spider Curl",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Drag_Curl",
+    name: "Drag Curl",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Standing_Dumbbell_Reverse_Curl",
+    name: "Ters Curl (Dambıl)",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "High_Cable_Curls",
+    name: "Yüksek Kablo Curl",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Overhead_Cable_Curl",
+    name: "Overhead Kablo Curl",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "JM_Press",
+    name: "JM Press",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Tate_Press",
+    name: "Tate Press",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Tricep_Dumbbell_Kickback",
+    name: "Triceps Kickback (Dambıl)",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
+    id: "Incline_Barbell_Triceps_Extension",
+    name: "Eğimli Triceps Extension (Halter)",
+    muscleGroup: "kol",
+    type: "resistance"
+  },
+  {
     id: "Crunches",
     name: "Mekik (Crunch)",
     muscleGroup: "karin",
@@ -335,6 +593,42 @@ export const SEED_EXERCISES: Exercise[] = [
   {
     id: "Mountain_Climbers",
     name: "Mountain Climber",
+    muscleGroup: "karin",
+    type: "resistance"
+  },
+  {
+    id: "Decline_Crunch",
+    name: "Alçalan Crunch",
+    muscleGroup: "karin",
+    type: "resistance"
+  },
+  {
+    id: "3_4_Sit-Up",
+    name: "Sit-Up",
+    muscleGroup: "karin",
+    type: "resistance"
+  },
+  {
+    id: "Dead_Bug",
+    name: "Dead Bug",
+    muscleGroup: "karin",
+    type: "resistance"
+  },
+  {
+    id: "Superman",
+    name: "Superman (Sırt/Karın)",
+    muscleGroup: "karin",
+    type: "resistance"
+  },
+  {
+    id: "Standing_Cable_Wood_Chop",
+    name: "Kablo Wood Chop",
+    muscleGroup: "karin",
+    type: "resistance"
+  },
+  {
+    id: "Barbell_Side_Bend",
+    name: "Yan Eğilme (Halter)",
     muscleGroup: "karin",
     type: "resistance"
   },
@@ -377,6 +671,30 @@ export const SEED_EXERCISES: Exercise[] = [
   {
     id: "Rowing_Stationary",
     name: "Kürek Makinesi",
+    muscleGroup: "kardiyo",
+    type: "cardio"
+  },
+  {
+    id: "Stairmaster",
+    name: "Merdiven (Stairmaster)",
+    muscleGroup: "kardiyo",
+    type: "cardio"
+  },
+  {
+    id: "Farmers_Walk",
+    name: "Farmer's Walk",
+    muscleGroup: "kardiyo",
+    type: "cardio"
+  },
+  {
+    id: "Sled_Push",
+    name: "Sled İtme",
+    muscleGroup: "kardiyo",
+    type: "cardio"
+  },
+  {
+    id: "Front_Box_Jump",
+    name: "Box Jump",
     muscleGroup: "kardiyo",
     type: "cardio"
   }

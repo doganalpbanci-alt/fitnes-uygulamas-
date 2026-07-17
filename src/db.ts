@@ -95,6 +95,11 @@ class FitDB extends Dexie {
         Array.from({ length: 7 }, (_, i) => ({ dayOfWeek: i, templateId: null })),
       );
     });
+    // Kütüphaneye yeni hareket eklendiğinde mevcut kurulumları senkronize et
+    // (özel hareketler farklı id ön ekine sahip olduğu için etkilenmez).
+    this.on('ready', async () => {
+      await this.exercises.bulkPut(SEED_EXERCISES);
+    });
   }
 }
 

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { checkOverload } from '../lib/overload';
+import { summarizeSession } from '../lib/workoutStats';
 import { fmtDate, fmtKg } from '../lib/format';
 import { useNav } from '../store';
 import { Card, ExerciseThumb, OverloadBadge, ScreenHeader, groupLabel } from '../components/ui';
@@ -134,6 +135,14 @@ export default function Progress() {
 
   const suggestions = tracked.filter((t) => t.overload.ready);
 
+  const finishedSessions = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.finishedAt)
+        .sort((a, b) => new Date(b.finishedAt!).getTime() - new Date(a.finishedAt!).getTime()),
+    [sessions],
+  );
+
   return (
     <div className="pb-4">
       <ScreenHeader title="İlerleme" />
@@ -167,6 +176,35 @@ export default function Progress() {
             </Card>
           ))
         )}
+
+        <div>
+          <div className="mb-2 px-1 text-sm font-semibold text-slate-400">Geçmiş Antrenmanlarım</div>
+          {finishedSessions.length === 0 ? (
+            <Card className="text-sm text-slate-400">Henüz tamamlanmış antrenman yok.</Card>
+          ) : (
+            <div className="space-y-2">
+              {finishedSessions.slice(0, 30).map((s) => {
+                const stats = summarizeSession(s, exercises);
+                return (
+                  <Card
+                    key={s.id}
+                    className="flex items-center justify-between py-2.5"
+                    onClick={() => push({ t: 'sessionSummary', sessionId: s.id! })}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{s.templateName}</div>
+                      <div className="text-xs text-slate-400">
+                        {fmtDate(s.date)} · {stats.durationMin} dk · {stats.totalSets} set ·{' '}
+                        {Math.round(stats.totalVolumeKg)} kg hacim
+                      </div>
+                    </div>
+                    <span className="text-slate-500">›</span>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
