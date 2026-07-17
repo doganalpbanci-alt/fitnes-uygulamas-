@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, todayStr, type SessionEntry, type WorkoutSession, type WorkoutTemplate } from '../db';
 import { checkOverload } from '../lib/overload';
+import { getExerciseRecords, lastSetPerformance } from '../lib/records';
 import { fmtDuration } from '../lib/format';
 import { useNav } from '../store';
 import { Button, Card, ExerciseThumb, OverloadBadge, ScreenHeader } from '../components/ui';
@@ -133,6 +134,8 @@ export default function Session({ templateId }: { templateId: number }) {
           if (!ex) return null;
           const isCardio = ex.type === 'cardio';
           const overload = !isCardio ? checkOverload(pastSessions, entry.exerciseId) : { ready: false as const };
+          const records = getExerciseRecords(pastSessions, entry.exerciseId);
+          const hasRecord = isCardio ? records.maxDurationMin != null : records.maxWeightKg != null || records.maxReps != null;
           return (
             <Card key={entry.exerciseId + ei} className="space-y-3">
               <div className="flex items-center gap-3">
@@ -146,79 +149,118 @@ export default function Session({ templateId }: { templateId: number }) {
                   )}
                 </div>
               </div>
-              {overload.ready && <OverloadBadge suggestedKg={overload.suggestedKg} />}
+              <div className="flex flex-wrap gap-1.5">
+                {overload.ready && <OverloadBadge suggestedKg={overload.suggestedKg} />}
+                {hasRecord && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-yellow-400/25 bg-gradient-to-r from-yellow-400/15 to-amber-500/10 px-2.5 py-1 text-xs font-semibold text-yellow-300">
+                    🥇{' '}
+                    {isCardio
+                      ? `Rekor: ${records.maxDurationMin} dk`
+                      : [
+                          records.maxWeightKg != null ? `${records.maxWeightKg} kg` : null,
+                          records.maxReps != null ? `${records.maxReps} tekrar` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                  </span>
+                )}
+              </div>
               <div className="space-y-2">
                 {entry.sets.map((set, si) => {
                   const isConfirmed = confirmed[ei]?.[si] ?? false;
+                  const lastPerf = lastSetPerformance(pastSessions, entry.exerciseId, si);
+                  const isWeightPR =
+                    !isCardio && set.weightKg != null && records.maxWeightKg != null && set.weightKg > records.maxWeightKg;
+                  const isRepsPR =
+                    !isCardio && set.reps != null && records.maxReps != null && set.reps > records.maxReps;
+                  const isNewRecord = isConfirmed && (isWeightPR || isRepsPR);
                   return (
-                    <div
-                      key={si}
-                      className={`flex items-center gap-2 rounded-xl p-1.5 ${
-                        isConfirmed ? 'bg-emerald-500/10 ring-1 ring-emerald-500/40' : ''
-                      }`}
-                    >
-                      <div className="w-11 text-sm text-slate-400">Set {si + 1}</div>
-                      {isCardio ? (
-                        <label className="flex flex-1 items-center gap-2">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            value={set.durationMin ?? ''}
-                            onChange={(e) =>
-                              setVal(ei, si, { durationMin: e.target.value === '' ? undefined : Number(e.target.value) })
-                            }
-                            className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-center"
-                          />
-                          <span className="text-sm text-slate-400">dk</span>
-                        </label>
-                      ) : (
-                        <>
-                          <label className="flex flex-1 items-center gap-1.5">
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              placeholder="—"
-                              value={set.reps ?? ''}
-                              onChange={(e) =>
-                                setVal(ei, si, { reps: e.target.value === '' ? undefined : Number(e.target.value) })
-                              }
-                              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center"
-                            />
-                            <span className="text-xs text-slate-400">tekrar</span>
-                          </label>
-                          <label className="flex flex-1 items-center gap-1.5">
+                    <div key={si}>
+                      <div
+                        className={`flex items-center gap-2 rounded-xl p-1.5 ${
+                          isNewRecord
+                            ? 'bg-yellow-400/10 ring-1 ring-yellow-400/50'
+                            : isConfirmed
+                              ? 'bg-emerald-500/10 ring-1 ring-emerald-500/40'
+                              : ''
+                        }`}
+                      >
+                        <div className="w-11 text-sm text-slate-400">Set {si + 1}</div>
+                        {isCardio ? (
+                          <label className="flex flex-1 items-center gap-2">
                             <input
                               type="number"
                               inputMode="decimal"
-                              placeholder="—"
-                              value={set.weightKg ?? ''}
+                              value={set.durationMin ?? ''}
                               onChange={(e) =>
-                                setVal(ei, si, { weightKg: e.target.value === '' ? undefined : Number(e.target.value) })
+                                setVal(ei, si, { durationMin: e.target.value === '' ? undefined : Number(e.target.value) })
                               }
-                              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center"
+                              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-center"
                             />
-                            <span className="text-xs text-slate-400">kg</span>
+                            <span className="text-sm text-slate-400">dk</span>
                           </label>
-                        </>
-                      )}
-                      <button
-                        onClick={() => toggleConfirm(ei, si)}
-                        aria-label={isConfirmed ? 'Onayı kaldır' : 'Seti onayla'}
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg ${
-                          isConfirmed ? 'bg-emerald-500 text-slate-950' : 'bg-white/[0.07] text-slate-300'
-                        }`}
-                      >
-                        ✓
-                      </button>
-                      {entry.sets.length > 1 && (
+                        ) : (
+                          <>
+                            <label className="flex flex-1 items-center gap-1.5">
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="—"
+                                value={set.reps ?? ''}
+                                onChange={(e) =>
+                                  setVal(ei, si, { reps: e.target.value === '' ? undefined : Number(e.target.value) })
+                                }
+                                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center"
+                              />
+                              <span className="text-xs text-slate-400">tekrar</span>
+                            </label>
+                            <label className="flex flex-1 items-center gap-1.5">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                placeholder="—"
+                                value={set.weightKg ?? ''}
+                                onChange={(e) =>
+                                  setVal(ei, si, { weightKg: e.target.value === '' ? undefined : Number(e.target.value) })
+                                }
+                                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2 text-center"
+                              />
+                              <span className="text-xs text-slate-400">kg</span>
+                            </label>
+                          </>
+                        )}
                         <button
-                          onClick={() => removeSet(ei, si)}
-                          aria-label="Seti sil"
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 active:bg-white/10"
+                          onClick={() => toggleConfirm(ei, si)}
+                          aria-label={isConfirmed ? 'Onayı kaldır' : 'Seti onayla'}
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg ${
+                            isNewRecord
+                              ? 'bg-yellow-400 text-slate-950'
+                              : isConfirmed
+                                ? 'bg-emerald-500 text-slate-950'
+                                : 'bg-white/[0.07] text-slate-300'
+                          }`}
                         >
-                          ✕
+                          {isNewRecord ? '🥇' : '✓'}
                         </button>
-                      )}
+                        {entry.sets.length > 1 && (
+                          <button
+                            onClick={() => removeSet(ei, si)}
+                            aria-label="Seti sil"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 active:bg-white/10"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <div className="px-1.5 pt-0.5 text-xs text-slate-500">
+                        {isNewRecord
+                          ? '🎉 Yeni rekor!'
+                          : lastPerf &&
+                            (isCardio
+                              ? lastPerf.durationMin != null && `Geçen sefer: ${lastPerf.durationMin} dk`
+                              : (lastPerf.reps != null || lastPerf.weightKg != null) &&
+                                `Geçen sefer: ${lastPerf.weightKg ?? '—'} kg × ${lastPerf.reps ?? '—'} tekrar`)}
+                      </div>
                     </div>
                   );
                 })}

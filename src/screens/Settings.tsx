@@ -60,6 +60,17 @@ export default function Settings() {
     location.reload();
   };
 
+  const resetProgress = async () => {
+    if (
+      !confirm(
+        'Tüm antrenman geçmişi silinecek: istatistikler, favori hareket, bölge yoğunluk haritası ve rekorlar sıfırlanır. Antrenman şablonların ve haftalık programın kalır. Emin misin?',
+      )
+    )
+      return;
+    await db.sessions.clear();
+    setMsg('✓ İlerleme verileri sıfırlandı.');
+  };
+
   return (
     <div className="pb-4">
       <ScreenHeader title="Ayarlar" />
@@ -107,6 +118,13 @@ export default function Settings() {
 
         <Card className="space-y-2">
           <div className="font-semibold text-rose-400">Tehlikeli bölge</div>
+          <div className="text-sm text-slate-400">
+            İlerleme verilerini sıfırlamak yalnızca antrenman geçmişini (istatistik, rekor, ısı haritası) siler;
+            şablonların ve programın kalır.
+          </div>
+          <Button variant="danger" className="w-full" onClick={resetProgress}>
+            İlerleme Verilerini Sıfırla
+          </Button>
           <Button variant="danger" className="w-full" onClick={wipe}>
             Tüm Verileri Sil
           </Button>

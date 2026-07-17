@@ -4,6 +4,7 @@ import { db } from '../db';
 import { checkOverload } from '../lib/overload';
 import { summarizeSession } from '../lib/workoutStats';
 import { computeOverallStats } from '../lib/progressStats';
+import { getExerciseRecords } from '../lib/records';
 import { fmtDate, fmtKg } from '../lib/format';
 import { useNav } from '../store';
 import { Card, ExerciseThumb, OverloadBadge, ScreenHeader, groupLabel } from '../components/ui';
@@ -66,6 +67,8 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: string }) {
   const isCardio = ex.type === 'cardio';
   const newestFirst = [...sessions].reverse();
   const overload = !isCardio ? checkOverload(newestFirst, exerciseId) : { ready: false as const };
+  const records = getExerciseRecords(newestFirst, exerciseId);
+  const hasRecord = isCardio ? records.maxDurationMin != null : records.maxWeightKg != null || records.maxReps != null;
 
   return (
     <div className="pb-4">
@@ -73,11 +76,50 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: string }) {
       <div className="space-y-3 px-4">
         <Card className="flex items-center gap-3">
           <ExerciseThumb ex={ex} size={64} />
-          <div>
+          <div className="flex-1">
             <div className="text-sm text-slate-400">{groupLabel(ex.muscleGroup)}</div>
-            {overload.ready && <div className="mt-1"><OverloadBadge suggestedKg={overload.suggestedKg} /></div>}
+            {overload.ready && (
+              <div className="mt-1">
+                <OverloadBadge suggestedKg={overload.suggestedKg} />
+              </div>
+            )}
           </div>
         </Card>
+
+        {hasRecord && (
+          <div className="grid grid-cols-2 gap-2">
+            {isCardio ? (
+              <Card className="col-span-2 flex items-center gap-3">
+                <div className="text-2xl">🥇</div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-yellow-300">Rekor Süre</div>
+                  <div className="text-lg font-bold">{records.maxDurationMin} dk</div>
+                </div>
+              </Card>
+            ) : (
+              <>
+                {records.maxWeightKg != null && (
+                  <Card className="flex items-center gap-3">
+                    <div className="text-2xl">🥇</div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-yellow-300">Rekor Ağırlık</div>
+                      <div className="text-lg font-bold">{fmtKg(records.maxWeightKg)}</div>
+                    </div>
+                  </Card>
+                )}
+                {records.maxReps != null && (
+                  <Card className="flex items-center gap-3">
+                    <div className="text-2xl">🥇</div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-yellow-300">Rekor Tekrar</div>
+                      <div className="text-lg font-bold">{records.maxReps}</div>
+                    </div>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {history.length === 0 ? (
           <Card className="text-sm text-slate-400">Henüz kayıt yok.</Card>
