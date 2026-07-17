@@ -1,0 +1,173 @@
+import { useMemo } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
+import { checkOverload } from '../lib/overload';
+import { fmtDate, fmtKg } from '../lib/format';
+import { useNav } from '../store';
+import { Card, ExerciseThumb, OverloadBadge, ScreenHeader, groupLabel } from '../components/ui';
+
+export function LineChart({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
+  if (points.length === 0) return null;
+  const w = 320;
+  const h = 120;
+  const pad = 8;
+  const ys = points.map((p) => p.y);
+  const min = Math.min(...ys);
+  const max = Math.max(...ys);
+  const span = max - min || 1;
+  const px = (i: number) => (points.length === 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (points.length - 1));
+  const py = (y: number) => h - pad - ((y - min) * (h - 2 * pad)) / span;
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(p.y).toFixed(1)}`).join(' ');
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full">
+        <path d={path} fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((p, i) => (
+          <circle key={i} cx={px(i)} cy={py(p.y)} r="3.5" fill="#34d399" />
+        ))}
+      </svg>
+      <div className="flex justify-between text-xs text-slate-500">
+        <span>{fmtDate(points[0].x)}</span>
+        <span>
+          {min === max ? '' : `${min}–`}
+          {max} {unit}
+        </span>
+        <span>{fmtDate(points[points.length - 1].x)}</span>
+      </div>
+    </div>
+  );
+}
+
+export function ExerciseDetail({ exerciseId }: { exerciseId: string }) {
+  const back = useNav((s) => s.back);
+  const ex = useLiveQuery(() => db.exercises.get(exerciseId), [exerciseId]);
+  const sessions = useLiveQuery(() => db.sessions.orderBy('date').toArray(), []) ?? [];
+
+  const history = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.finishedAt)
+        .map((s) => {
+          const entry = s.entries.find((e) => e.exerciseId === exerciseId);
+          if (!entry || entry.sets.length === 0) return null;
+          const maxW = Math.max(...entry.sets.map((set) => set.weightKg ?? 0));
+          const volume = entry.sets.reduce((acc, set) => acc + (set.weightKg ?? 0) * (set.reps ?? 0), 0);
+          const duration = entry.sets.reduce((acc, set) => acc + (set.durationMin ?? 0), 0);
+          return { date: s.date, entry, maxW, volume, duration };
+        })
+        .filter((x) => x != null),
+    [sessions, exerciseId],
+  );
+
+  if (!ex) return null;
+  const isCardio = ex.type === 'cardio';
+  const newestFirst = [...sessions].reverse();
+  const overload = !isCardio ? checkOverload(newestFirst, exerciseId) : { ready: false as const };
+
+  return (
+    <div className="pb-4">
+      <ScreenHeader title={ex.name} onBack={back} />
+      <div className="space-y-3 px-4">
+        <Card className="flex items-center gap-3">
+          <ExerciseThumb ex={ex} size={64} />
+          <div>
+            <div className="text-sm text-slate-400">{groupLabel(ex.muscleGroup)}</div>
+            {overload.ready && <div className="mt-1"><OverloadBadge suggestedKg={overload.suggestedKg} /></div>}
+          </div>
+        </Card>
+
+        {history.length === 0 ? (
+          <Card className="text-sm text-slate-400">Henüz kayıt yok.</Card>
+        ) : isCardio ? (
+          <Card>
+            <div className="mb-2 text-sm font-semibold text-slate-300">Süre (dk)</div>
+            <LineChart points={history.map((hp) => ({ x: hp.date, y: hp.duration }))} unit="dk" />
+          </Card>
+        ) : (
+          <>
+            <Card>
+              <div className="mb-2 text-sm font-semibold text-slate-300">En yüksek ağırlık (kg)</div>
+              <LineChart points={history.map((hp) => ({ x: hp.date, y: hp.maxW }))} unit="kg" />
+            </Card>
+            <Card>
+              <div className="mb-2 text-sm font-semibold text-slate-300">Toplam hacim (set × tekrar × kg)</div>
+              <LineChart points={history.map((hp) => ({ x: hp.date, y: hp.volume }))} unit="kg" />
+            </Card>
+          </>
+        )}
+
+        <div className="mb-2 px-1 text-sm font-semibold text-slate-400">Oturum geçmişi</div>
+        {[...history].reverse().map((hp, i) => (
+          <Card key={i} className="py-3">
+            <div className="mb-1 flex justify-between text-sm">
+              <span className="font-semibold">{fmtDate(hp.date)}</span>
+              {!isCardio && <span className="text-slate-400">maks {fmtKg(hp.maxW)}</span>}
+            </div>
+            <div className="text-sm text-slate-300">
+              {isCardio
+                ? `${hp.duration} dk`
+                : hp.entry.sets.map((s, j) => (
+                    <span key={j} className="mr-2 inline-block rounded bg-slate-700/60 px-1.5 py-0.5 text-xs">
+                      {s.weightKg ?? 0}kg×{s.reps ?? 0}
+                    </span>
+                  ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function Progress() {
+  const push = useNav((s) => s.push);
+  const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? [];
+  const sessions = useLiveQuery(() => db.sessions.orderBy('date').reverse().toArray(), []) ?? [];
+
+  const tracked = useMemo(() => {
+    const ids = new Set(sessions.filter((s) => s.finishedAt).flatMap((s) => s.entries.map((e) => e.exerciseId)));
+    return exercises
+      .filter((e) => ids.has(e.id))
+      .map((e) => ({ ex: e, overload: e.type === 'resistance' ? checkOverload(sessions, e.id) : { ready: false as const, streak: 0 } }))
+      .sort((a, b) => Number(b.overload.ready) - Number(a.overload.ready));
+  }, [exercises, sessions]);
+
+  const suggestions = tracked.filter((t) => t.overload.ready);
+
+  return (
+    <div className="pb-4">
+      <ScreenHeader title="İlerleme" />
+      <div className="space-y-3 px-4">
+        {suggestions.length > 0 && (
+          <Card className="border-amber-400/30 bg-amber-400/5">
+            <div className="mb-1 font-semibold text-amber-300">🎯 Progressive Overload</div>
+            <div className="text-sm text-slate-300">
+              {suggestions.length} harekette art arda 3 antrenmandır hedef tekrar aralığındasın — ağırlığı
+              artırabilirsin.
+            </div>
+          </Card>
+        )}
+        {tracked.length === 0 ? (
+          <Card className="text-sm text-slate-400">
+            İlk antrenmanını kaydettikten sonra hareket bazında ilerleme grafiklerin burada görünecek.
+          </Card>
+        ) : (
+          tracked.map(({ ex, overload }) => (
+            <Card key={ex.id} className="flex items-center gap-3 py-2.5" onClick={() => push({ t: 'exerciseDetail', exerciseId: ex.id })}>
+              <ExerciseThumb ex={ex} size={48} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold">{ex.name}</div>
+                {'suggestedKg' in overload && overload.ready ? (
+                  <OverloadBadge suggestedKg={overload.suggestedKg} />
+                ) : (
+                  <div className="text-xs text-slate-400">{groupLabel(ex.muscleGroup)}</div>
+                )}
+              </div>
+              <span className="text-slate-500">›</span>
+            </Card>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
