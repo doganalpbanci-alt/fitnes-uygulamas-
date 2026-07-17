@@ -33,18 +33,24 @@ export default function App() {
         {tab === 'progress' && <Progress />}
         {tab === 'settings' && <Settings />}
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-800 bg-[#0b1020]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-lg pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-[#070a14]/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-lg gap-1 px-2 pb-[env(safe-area-inset-bottom)] pt-1">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] ${
-                tab === t.key ? 'text-emerald-400' : 'text-slate-500'
-              }`}
+              className="btn-tap flex flex-1 flex-col items-center gap-1 py-2"
             >
-              <span className="text-xl leading-none">{t.icon}</span>
-              {t.label}
+              <span
+                className={`flex h-8 w-12 items-center justify-center rounded-full text-lg leading-none transition-colors ${
+                  tab === t.key ? 'bg-emerald-400/15 text-emerald-400' : 'text-slate-500'
+                }`}
+              >
+                {t.icon}
+              </span>
+              <span className={`text-[10px] font-medium ${tab === t.key ? 'text-emerald-400' : 'text-slate-500'}`}>
+                {t.label}
+              </span>
             </button>
           ))}
         </div>

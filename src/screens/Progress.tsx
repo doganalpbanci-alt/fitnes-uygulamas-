@@ -108,7 +108,7 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: string }) {
               {isCardio
                 ? `${hp.duration} dk`
                 : hp.entry.sets.map((s, j) => (
-                    <span key={j} className="mr-2 inline-block rounded bg-slate-700/60 px-1.5 py-0.5 text-xs">
+                    <span key={j} className="mr-2 inline-block rounded bg-white/[0.08] px-1.5 py-0.5 text-xs">
                       {s.weightKg ?? 0}kg×{s.reps ?? 0}
                     </span>
                   ))}

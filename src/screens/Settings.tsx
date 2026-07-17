@@ -75,7 +75,7 @@ export default function Settings() {
               inputMode="decimal"
               value={inc}
               onChange={(e) => setInc(e.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
             />
             <Button variant="secondary" onClick={saveInc}>
               Kaydet

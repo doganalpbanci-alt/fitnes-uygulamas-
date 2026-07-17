@@ -56,7 +56,7 @@ export default function Workout() {
                   <select
                     value={day.templateId ?? ''}
                     onChange={(e) => setDay(day.dayOfWeek, e.target.value ? Number(e.target.value) : null)}
-                    className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
                   >
                     <option value="">— Dinlenme —</option>
                     {templates.map((t) => (

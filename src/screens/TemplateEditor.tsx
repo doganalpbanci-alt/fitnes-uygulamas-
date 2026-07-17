@@ -32,14 +32,14 @@ function ExercisePicker({ onPick, onClose }: { onPick: (ex: Exercise) => void; o
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex flex-col bg-[#0b1020]">
+    <div className="fixed inset-0 z-30 flex flex-col bg-[#070a14]">
       <ScreenHeader title="Hareket Seç" onBack={onClose} />
       <div className="px-4 pb-2">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Ara…"
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm"
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm"
         />
         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
           {[{ key: 'all' as const, label: 'Tümü' }, ...MUSCLE_GROUPS].map((g) => (
@@ -47,7 +47,7 @@ function ExercisePicker({ onPick, onClose }: { onPick: (ex: Exercise) => void; o
               key={g.key}
               onClick={() => setGroup(g.key as MuscleGroup | 'all')}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-                group === g.key ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                group === g.key ? 'bg-emerald-500 text-slate-950' : 'bg-white/[0.06] text-slate-300'
               }`}
             >
               {g.label}
@@ -76,7 +76,7 @@ function ExercisePicker({ onPick, onClose }: { onPick: (ex: Exercise) => void; o
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               placeholder="Hareket adı"
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
             />
             <Button variant="secondary" disabled={!customName.trim()} onClick={addCustom}>
               Ekle
@@ -155,7 +155,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Antrenman adı (örn. İtiş Günü)"
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 font-semibold"
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 font-semibold"
         />
 
         {items.map((it, i) => {
@@ -171,10 +171,10 @@ export default function TemplateEditor({ id }: { id?: number }) {
                   <div className="text-xs text-slate-400">{groupLabel(ex.muscleGroup)}</div>
                 </div>
                 <div className="flex gap-1 text-slate-400">
-                  <button className="rounded p-1.5 active:bg-slate-700" onClick={() => move(i, -1)}>↑</button>
-                  <button className="rounded p-1.5 active:bg-slate-700" onClick={() => move(i, 1)}>↓</button>
+                  <button className="rounded p-1.5 active:bg-white/10" onClick={() => move(i, -1)}>↑</button>
+                  <button className="rounded p-1.5 active:bg-white/10" onClick={() => move(i, 1)}>↓</button>
                   <button
-                    className="rounded p-1.5 text-rose-400 active:bg-slate-700"
+                    className="rounded p-1.5 text-rose-400 active:bg-white/10"
                     onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}
                   >
                     ✕
@@ -189,7 +189,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
                     inputMode="numeric"
                     value={it.targetDurationMin ?? ''}
                     onChange={(e) => update(i, { targetDurationMin: Number(e.target.value) || undefined })}
-                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2"
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
                   />
                 </label>
               ) : (
@@ -201,7 +201,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
                       inputMode="numeric"
                       value={it.targetSets}
                       onChange={(e) => update(i, { targetSets: Math.max(1, Number(e.target.value) || 1) })}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-2 py-2"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
                   <label className="block">
@@ -211,7 +211,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
                       inputMode="numeric"
                       value={it.repMin}
                       onChange={(e) => update(i, { repMin: Number(e.target.value) || 1 })}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-2 py-2"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
                   <label className="block">
@@ -221,7 +221,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
                       inputMode="numeric"
                       value={it.repMax}
                       onChange={(e) => update(i, { repMax: Number(e.target.value) || 1 })}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-2 py-2"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
                   <label className="block">
@@ -231,7 +231,7 @@ export default function TemplateEditor({ id }: { id?: number }) {
                       inputMode="decimal"
                       value={it.startWeightKg ?? ''}
                       onChange={(e) => update(i, { startWeightKg: e.target.value === '' ? undefined : Number(e.target.value) })}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-2 py-2"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
                 </div>
