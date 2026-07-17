@@ -3,9 +3,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { checkOverload } from '../lib/overload';
 import { summarizeSession } from '../lib/workoutStats';
+import { computeOverallStats } from '../lib/progressStats';
 import { fmtDate, fmtKg } from '../lib/format';
 import { useNav } from '../store';
 import { Card, ExerciseThumb, OverloadBadge, ScreenHeader, groupLabel } from '../components/ui';
+import { BodyHeatmap } from '../components/BodyHeatmap';
 
 export function LineChart({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
   if (points.length === 0) return null;
@@ -143,10 +145,59 @@ export default function Progress() {
     [sessions],
   );
 
+  const stats = useMemo(() => computeOverallStats(sessions, exercises), [sessions, exercises]);
+
   return (
     <div className="pb-4">
       <ScreenHeader title="İlerleme" />
       <div className="space-y-3 px-4">
+        {stats.totalSessions > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            <Card className="text-center">
+              <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 bg-clip-text text-2xl font-extrabold text-transparent">
+                {stats.totalSessions}
+              </div>
+              <div className="text-xs text-slate-400">antrenman</div>
+            </Card>
+            <Card className="text-center">
+              <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 bg-clip-text text-2xl font-extrabold text-transparent">
+                {Math.round(stats.totalDurationMin / 60)}
+              </div>
+              <div className="text-xs text-slate-400">saat</div>
+            </Card>
+            <Card className="text-center">
+              <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 bg-clip-text text-2xl font-extrabold text-transparent">
+                {Math.round(stats.totalVolumeKg / 1000)}
+              </div>
+              <div className="text-xs text-slate-400">ton hacim</div>
+            </Card>
+          </div>
+        )}
+
+        {stats.favorite && (
+          <Card
+            className="flex items-center gap-3"
+            onClick={() => push({ t: 'exerciseDetail', exerciseId: stats.favorite!.exercise.id })}
+          >
+            <div className="text-2xl">⭐</div>
+            <ExerciseThumb ex={stats.favorite.exercise} size={48} />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">Favori Hareketin</div>
+              <div className="truncate font-bold">{stats.favorite.exercise.name}</div>
+              <div className="text-xs text-slate-400">
+                {stats.favorite.sessionCount} antrenman · {stats.favorite.setCount} set
+              </div>
+            </div>
+            <span className="text-slate-500">›</span>
+          </Card>
+        )}
+
+        <Card>
+          <div className="mb-1 font-semibold">Bölge Yoğunluğu</div>
+          <div className="mb-3 text-xs text-slate-400">Toplam hacme göre en çok çalıştığın bölgeler parlıyor</div>
+          <BodyHeatmap groupVolume={stats.groupVolume} />
+        </Card>
+
         {suggestions.length > 0 && (
           <Card className="border-amber-400/30 bg-amber-400/5">
             <div className="mb-1 font-semibold text-amber-300">🎯 Progressive Overload</div>
