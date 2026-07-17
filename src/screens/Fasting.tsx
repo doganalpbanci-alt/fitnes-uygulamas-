@@ -40,17 +40,33 @@ function CircularTimer({ fraction, children }: { fraction: number; children: Rea
   return (
     <div className="relative mx-auto h-56 w-56">
       <svg viewBox="0 0 200 200" className="h-full w-full -rotate-90">
-        <circle cx="100" cy="100" r={r} fill="none" stroke="#1e293b" strokeWidth="12" />
+        <defs>
+          <linearGradient id="fastProgress" x1="0%" y1="0%" x2="100%" y2="100%">
+            {f >= 1 ? (
+              <>
+                <stop offset="0%" stopColor="#6ee7b7" />
+                <stop offset="100%" stopColor="#10b981" />
+              </>
+            ) : (
+              <>
+                <stop offset="0%" stopColor="#38bdf8" />
+                <stop offset="100%" stopColor="#818cf8" />
+              </>
+            )}
+          </linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="12" />
         <circle
           cx="100"
           cy="100"
           r={r}
           fill="none"
-          stroke={f >= 1 ? '#34d399' : '#38bdf8'}
+          stroke="url(#fastProgress)"
           strokeWidth="12"
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - f)}
+          style={{ transition: 'stroke-dashoffset 0.6s ease' }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{children}</div>
@@ -125,14 +141,14 @@ function ActiveFast({ fast, now }: { fast: Fast; now: number }) {
       </div>
 
       {editing ? (
-        <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+        <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.05] p-3">
           <div className="text-sm font-semibold text-slate-300">Başlangıç zamanını düzelt</div>
           <input
             type="datetime-local"
             value={editValue}
             max={toLocalInput(new Date())}
             onChange={(e) => setEditValue(e.target.value)}
-            className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+            className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
           />
           <div className="flex gap-2">
             <Button variant="secondary" className="flex-1" onClick={() => setEditing(false)}>
@@ -205,10 +221,10 @@ function StartFast() {
           <button
             key={p.name}
             onClick={() => setSelected(p.name)}
-            className={`rounded-xl border px-3 py-2.5 text-left ${
+            className={`btn-tap rounded-xl border px-3 py-2.5 text-left ${
               selected === p.name
-                ? 'border-emerald-500 bg-emerald-500/10'
-                : 'border-slate-700 bg-slate-900'
+                ? 'border-emerald-400/50 bg-gradient-to-br from-emerald-400/15 to-emerald-500/5 shadow-[0_0_0_1px_rgba(52,211,153,0.15)]'
+                : 'border-white/[0.06] bg-white/[0.02]'
             }`}
           >
             <div className="font-bold">{p.name}</div>
@@ -217,10 +233,10 @@ function StartFast() {
         ))}
         <button
           onClick={() => setSelected('custom')}
-          className={`col-span-2 flex items-center gap-2 rounded-xl border px-3 py-2.5 ${
+          className={`btn-tap col-span-2 flex items-center gap-2 rounded-xl border px-3 py-2.5 ${
             selected === 'custom'
-              ? 'border-emerald-500 bg-emerald-500/10'
-              : 'border-slate-700 bg-slate-900'
+              ? 'border-emerald-400/50 bg-gradient-to-br from-emerald-400/15 to-emerald-500/5 shadow-[0_0_0_1px_rgba(52,211,153,0.15)]'
+              : 'border-white/[0.06] bg-white/[0.02]'
           }`}
         >
           <div className="font-bold">Özel</div>
@@ -234,7 +250,7 @@ function StartFast() {
               setCustomHours(e.target.value);
               setSelected('custom');
             }}
-            className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm"
+            className="w-24 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-sm"
           />
           <span className="text-xs text-slate-400">saat oruç</span>
         </button>
@@ -258,7 +274,7 @@ function StartFast() {
           value={startValue}
           max={toLocalInput(new Date())}
           onChange={(e) => setStartValue(e.target.value)}
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
         />
       )}
 
@@ -327,7 +343,7 @@ export default function Fasting() {
                     </div>
                     <button
                       onClick={() => removeFast(f)}
-                      className="rounded-lg p-2 text-slate-500 active:bg-slate-700"
+                      className="rounded-lg p-2 text-slate-500 active:bg-white/10"
                       aria-label="Kaydı sil"
                     >
                       🗑️

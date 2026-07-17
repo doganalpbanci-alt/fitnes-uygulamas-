@@ -41,29 +41,40 @@ export default function Home() {
     return 'İyi akşamlar';
   };
 
+  const workoutHero = template && !doneToday;
+
   return (
     <div className="pb-4">
       <ScreenHeader title={`${greeting()} 💪`} />
       <div className="space-y-3 px-4">
-        <Card>
-          <div className="text-sm text-slate-400">
-            Bugün · {DAY_NAMES[today]}
+        <Card
+          className={
+            workoutHero
+              ? '!border-emerald-400/25 !bg-gradient-to-br !from-emerald-400/[0.12] !via-white/[0.03] !to-transparent'
+              : ''
+          }
+        >
+          <div className="flex items-center gap-1.5 text-sm text-slate-400">
+            <span>📅</span>
+            <span>Bugün · {DAY_NAMES[today]}</span>
           </div>
           {template ? (
-            <div className="mt-1 flex items-center justify-between gap-3">
+            <div className="mt-2 flex items-center justify-between gap-3">
               <div>
-                <div className="text-lg font-bold">{template.name}</div>
+                <div className="text-xl font-bold tracking-tight">{template.name}</div>
                 <div className="text-xs text-slate-400">{template.exercises.length} hareket</div>
               </div>
               {doneToday ? (
-                <span className="font-semibold text-emerald-400">✓ Tamamlandı</span>
+                <span className="flex items-center gap-1 rounded-full bg-emerald-400/15 px-3 py-1.5 text-sm font-semibold text-emerald-400">
+                  ✓ Tamamlandı
+                </span>
               ) : (
                 <Button onClick={() => push({ t: 'session', templateId: template.id! })}>Antrenmanı Başlat</Button>
               )}
             </div>
           ) : (
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <div className="text-lg font-bold">Dinlenme günü 😌</div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="text-xl font-bold tracking-tight">Dinlenme günü 😌</div>
               <Button variant="secondary" onClick={() => setTab('workout')}>
                 Programı Düzenle
               </Button>
@@ -72,17 +83,20 @@ export default function Home() {
         </Card>
 
         <Card onClick={() => setTab('fasting')}>
-          <div className="text-sm text-slate-400">Aralıklı Oruç</div>
+          <div className="flex items-center gap-1.5 text-sm text-slate-400">
+            <span>⏱️</span>
+            <span>Aralıklı Oruç</span>
+          </div>
           {activeFast ? (
             (() => {
               const elapsed = now - new Date(activeFast.startedAt).getTime();
               const remaining = activeFast.targetHours * 3600_000 - elapsed;
               return (
-                <div className="mt-1 flex items-center justify-between">
-                  <div className="text-lg font-bold">
-                    {activeFast.protocol} ·{' '}
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-xl font-bold tracking-tight">
+                    {activeFast.protocol}{' '}
                     {remaining > 0 ? (
-                      <span className="tabular-nums">{fmtDuration(remaining)} kaldı</span>
+                      <span className="tabular-nums text-slate-300">{fmtDuration(remaining)} kaldı</span>
                     ) : (
                       <span className="text-emerald-400">Hedef tamamlandı 🎉</span>
                     )}
@@ -92,9 +106,9 @@ export default function Home() {
               );
             })()
           ) : (
-            <div className="mt-1 flex items-center justify-between">
-              <div className="text-lg font-bold">Aktif oruç yok</div>
-              <span className="text-sm text-emerald-400">Başlat ›</span>
+            <div className="mt-2 flex items-center justify-between">
+              <div className="text-xl font-bold tracking-tight">Aktif oruç yok</div>
+              <span className="text-sm font-semibold text-emerald-400">Başlat ›</span>
             </div>
           )}
         </Card>

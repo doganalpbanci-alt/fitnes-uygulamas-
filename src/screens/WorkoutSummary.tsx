@@ -19,22 +19,29 @@ export default function WorkoutSummary({ sessionId }: { sessionId: number }) {
     <div className="pb-4">
       <ScreenHeader title="Antrenman Özeti" onBack={back} />
       <div className="space-y-3 px-4">
-        <Card>
-          <div className="text-lg font-bold">{session.templateName}</div>
+        <Card className="!border-emerald-400/20 !bg-gradient-to-br !from-emerald-400/[0.10] !via-white/[0.03] !to-transparent text-center animate-pop">
+          <div className="text-3xl">🏆</div>
+          <div className="mt-1 text-lg font-bold tracking-tight">{session.templateName}</div>
           <div className="text-sm text-slate-400">{fmtDate(session.date)}</div>
         </Card>
 
         <div className="grid grid-cols-3 gap-2">
           <Card className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">{stats.durationMin}</div>
+            <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 bg-clip-text text-2xl font-extrabold text-transparent">
+              {stats.durationMin}
+            </div>
             <div className="text-xs text-slate-400">dakika</div>
           </Card>
           <Card className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">{stats.totalSets}</div>
+            <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 bg-clip-text text-2xl font-extrabold text-transparent">
+              {stats.totalSets}
+            </div>
             <div className="text-xs text-slate-400">set</div>
           </Card>
           <Card className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">{Math.round(stats.totalVolumeKg)}</div>
+            <div className="bg-gradient-to-br from-emerald-300 to-emerald-500 bg-clip-text text-2xl font-extrabold text-transparent">
+              {Math.round(stats.totalVolumeKg)}
+            </div>
             <div className="text-xs text-slate-400">kg hacim</div>
           </Card>
         </div>
@@ -54,10 +61,10 @@ export default function WorkoutSummary({ sessionId }: { sessionId: number }) {
                   <span>{groupLabel(g.group)}</span>
                   <span className="text-slate-400">{fmtKg(Math.round(g.volumeKg))}</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-700">
+                <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
                   <div
-                    className="h-full rounded-full bg-emerald-500"
-                    style={{ width: `${(g.volumeKg / maxGroupVol) * 100}%` }}
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-400"
+                    style={{ width: `${(g.volumeKg / maxGroupVol) * 100}%`, transition: 'width 0.5s ease' }}
                   />
                 </div>
               </div>
