@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DAY_NAMES, todayIndex, todayStr } from '../db';
 import { fmtDuration } from '../lib/format';
+import { eatingHoursFor } from '../lib/fasting';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import { useEffect, useState } from 'react';
@@ -28,10 +29,9 @@ export default function Home() {
         : false,
     [schedule?.templateId],
   );
-  const activeFast = useLiveQuery(
-    async () => (await db.fasts.orderBy('startedAt').reverse().limit(5).toArray()).find((f) => !f.endedAt),
-    [],
-  );
+  const recentFasts = useLiveQuery(() => db.fasts.orderBy('startedAt').reverse().limit(5).toArray(), []) ?? [];
+  const activeFast = recentFasts.find((f) => !f.endedAt);
+  const lastEndedFast = recentFasts.filter((f) => f.endedAt).sort((a, b) => new Date(b.endedAt!).getTime() - new Date(a.endedAt!).getTime())[0];
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -89,7 +89,19 @@ export default function Home() {
           </div>
           {activeFast ? (
             (() => {
-              const elapsed = now - new Date(activeFast.startedAt).getTime();
+              const startMs = new Date(activeFast.startedAt).getTime();
+              if (startMs > now) {
+                return (
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="text-xl font-bold tracking-tight">
+                      ⏳ {activeFast.protocol}{' '}
+                      <span className="tabular-nums text-slate-300">{fmtDuration(startMs - now)} sonra</span>
+                    </div>
+                    <span className="text-slate-500">›</span>
+                  </div>
+                );
+              }
+              const elapsed = now - startMs;
               const remaining = activeFast.targetHours * 3600_000 - elapsed;
               return (
                 <div className="mt-2 flex items-center justify-between">
@@ -99,6 +111,26 @@ export default function Home() {
                       <span className="tabular-nums text-slate-300">{fmtDuration(remaining)} kaldı</span>
                     ) : (
                       <span className="text-emerald-400">Hedef tamamlandı 🎉</span>
+                    )}
+                  </div>
+                  <span className="text-slate-500">›</span>
+                </div>
+              );
+            })()
+          ) : lastEndedFast ? (
+            (() => {
+              const eatingH = eatingHoursFor(lastEndedFast.targetHours);
+              const windowEndMs = new Date(lastEndedFast.endedAt!).getTime() + eatingH * 3600_000;
+              const inWindow = now < windowEndMs;
+              return (
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-xl font-bold tracking-tight">
+                    {inWindow ? (
+                      <>
+                        🍽️ <span className="tabular-nums text-slate-300">{fmtDuration(windowEndMs - now)} yeme penceresi</span>
+                      </>
+                    ) : (
+                      <span className="text-amber-400">Yeme penceresi doldu</span>
                     )}
                   </div>
                   <span className="text-slate-500">›</span>

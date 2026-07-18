@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, todayStr, type Fast } from '../db';
 import { fmtClock, fmtDuration } from '../lib/format';
+import { eatingHoursFor } from '../lib/fasting';
 import { Button, Card, ScreenHeader } from '../components/ui';
 
 const PLANS = [
@@ -26,33 +27,33 @@ function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** Bitiş zamanını göster: bugünse sadece saat, değilse gün adıyla */
+/** Bir zamanı göster: bugünse sadece saat, değilse gün adıyla */
 function fmtEnd(end: Date): string {
   const time = end.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   if (todayStr(end) === todayStr()) return time;
   return `${end.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`;
 }
 
-function CircularTimer({ fraction, children }: { fraction: number; children: React.ReactNode }) {
+function CircularTimer({
+  fraction,
+  tone = 'fast',
+  children,
+}: {
+  fraction: number;
+  tone?: 'fast' | 'eat';
+  children: React.ReactNode;
+}) {
   const r = 88;
   const c = 2 * Math.PI * r;
   const f = Math.min(1, Math.max(0, fraction));
+  const stops: [string, string] = tone === 'eat' ? ['#fbbf24', '#f97316'] : f >= 1 ? ['#6ee7b7', '#10b981'] : ['#38bdf8', '#818cf8'];
   return (
     <div className="relative mx-auto h-56 w-56">
       <svg viewBox="0 0 200 200" className="h-full w-full -rotate-90">
         <defs>
           <linearGradient id="fastProgress" x1="0%" y1="0%" x2="100%" y2="100%">
-            {f >= 1 ? (
-              <>
-                <stop offset="0%" stopColor="#6ee7b7" />
-                <stop offset="100%" stopColor="#10b981" />
-              </>
-            ) : (
-              <>
-                <stop offset="0%" stopColor="#38bdf8" />
-                <stop offset="100%" stopColor="#818cf8" />
-              </>
-            )}
+            <stop offset="0%" stopColor={stops[0]} />
+            <stop offset="100%" stopColor={stops[1]} />
           </linearGradient>
         </defs>
         <circle cx="100" cy="100" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="12" />
@@ -87,6 +88,39 @@ function calcStreak(fasts: Fast[]): number {
     d.setDate(d.getDate() - 1);
   }
   return streak;
+}
+
+function PendingFast({ fast, now }: { fast: Fast; now: number }) {
+  const startMs = new Date(fast.startedAt).getTime();
+  const untilStart = startMs - now;
+
+  const cancel = async () => {
+    if (!confirm('Planlanan oruç iptal edilsin mi?')) return;
+    await db.fasts.delete(fast.id!);
+  };
+
+  const startNow = async () => {
+    await db.fasts.update(fast.id!, { startedAt: new Date().toISOString() });
+  };
+
+  return (
+    <Card className="space-y-4 text-center">
+      <div className="text-4xl">⏳</div>
+      <div>
+        <div className="text-sm text-slate-400">{fast.protocol} orucu planlandı</div>
+        <div className="mt-1 text-3xl font-bold tabular-nums">{fmtDuration(untilStart)}</div>
+        <div className="text-xs text-slate-400">sonra başlayacak · {fmtEnd(new Date(startMs))}</div>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="secondary" className="flex-1" onClick={cancel}>
+          Vazgeç
+        </Button>
+        <Button className="flex-1" onClick={startNow}>
+          Şimdi Başlat
+        </Button>
+      </div>
+    </Card>
+  );
 }
 
 function ActiveFast({ fast, now }: { fast: Fast; now: number }) {
@@ -179,9 +213,61 @@ function ActiveFast({ fast, now }: { fast: Fast; now: number }) {
   );
 }
 
-function StartFast() {
-  const [selected, setSelected] = useState<string>('16:8');
-  const [customHours, setCustomHours] = useState('');
+function EatingWindowCountdown({ lastEnded, now }: { lastEnded: Fast; now: number }) {
+  const eatingH = eatingHoursFor(lastEnded.targetHours);
+  const endMs = new Date(lastEnded.endedAt!).getTime();
+  const total = eatingH * 3600_000;
+  const windowEndMs = endMs + total;
+  const elapsed = now - endMs;
+  const remaining = windowEndMs - now;
+
+  if (total <= 0) return null;
+
+  return (
+    <Card className="space-y-3">
+      <CircularTimer fraction={elapsed / total} tone="eat">
+        <div className="text-xs uppercase tracking-wide text-slate-400">🍽️ Yeme Penceresi</div>
+        <div className="text-3xl font-bold tabular-nums">{fmtDuration(remaining)}</div>
+        <div className="mt-1 text-xs text-slate-400">kaldı</div>
+      </CircularTimer>
+      <div className="text-center text-sm text-slate-400">
+        Sıradaki oruç önerisi: <b className="text-slate-200">{fmtEnd(new Date(windowEndMs))}</b>
+      </div>
+    </Card>
+  );
+}
+
+function EatingWindowElapsed({ lastEnded, now }: { lastEnded: Fast; now: number }) {
+  const eatingH = eatingHoursFor(lastEnded.targetHours);
+  const windowEndMs = new Date(lastEnded.endedAt!).getTime() + eatingH * 3600_000;
+  const since = now - windowEndMs;
+
+  const continueCycle = async () => {
+    await db.fasts.add({
+      protocol: lastEnded.protocol,
+      targetHours: lastEnded.targetHours,
+      startedAt: new Date(windowEndMs).toISOString(),
+    });
+  };
+
+  return (
+    <Card className="space-y-3 border-amber-400/25 bg-gradient-to-br from-amber-400/[0.10] via-white/[0.03] to-transparent text-center">
+      <div className="text-3xl">🍽️</div>
+      <div>
+        <div className="text-lg font-bold">Yeme pencereniz doldu</div>
+        <div className="text-sm text-slate-400">{fmtDuration(since)} önce bitti</div>
+      </div>
+      <Button className="w-full" onClick={continueCycle}>
+        ✓ {lastEnded.protocol} Orucuna Başla
+      </Button>
+    </Card>
+  );
+}
+
+function StartFast({ initialProtocol, initialHours }: { initialProtocol?: string; initialHours?: number }) {
+  const matchingPlan = initialProtocol ? PLANS.find((p) => p.name === initialProtocol) : undefined;
+  const [selected, setSelected] = useState<string>(() => matchingPlan?.name ?? (initialProtocol ? 'custom' : '16:8'));
+  const [customHours, setCustomHours] = useState(() => (!matchingPlan && initialHours ? String(initialHours) : ''));
   const [customStart, setCustomStart] = useState(false);
   const [startValue, setStartValue] = useState('');
 
@@ -191,8 +277,9 @@ function StartFast() {
       : PLANS.find((p) => p.name === selected)!;
   const planValid = plan.hours > 0;
 
-  const previewStart = customStart && startValue ? new Date(startValue) : new Date();
-  const previewEnd = new Date(previewStart.getTime() + plan.hours * 3600_000);
+  const chosenStart = customStart && startValue ? new Date(startValue) : new Date();
+  const isFuture = chosenStart.getTime() > Date.now();
+  const previewEnd = new Date(chosenStart.getTime() + plan.hours * 3600_000);
 
   const start = async () => {
     if (!planValid) return;
@@ -200,10 +287,6 @@ function StartFast() {
     if (customStart) {
       const d = new Date(startValue);
       if (isNaN(d.getTime())) return;
-      if (d.getTime() > Date.now()) {
-        alert('Başlangıç zamanı gelecekte olamaz. Geçmiş bir saat seç ya da "şimdi" başlat.');
-        return;
-      }
       startedAt = d;
     }
     await db.fasts.add({
@@ -267,28 +350,39 @@ function StartFast() {
           }}
           className="h-4 w-4 accent-emerald-500"
         />
-        Farklı bir saatte başladım (geçmiş saat seç)
+        Farklı bir saatte başlat (geçmiş ya da ileri bir zaman)
       </label>
       {customStart && (
         <input
           type="datetime-local"
           value={startValue}
-          max={toLocalInput(new Date())}
           onChange={(e) => setStartValue(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
         />
       )}
 
       {planValid && (
-        <div className="rounded-xl bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
-          <span className="text-slate-400">Bitiş: </span>
-          <b>{fmtEnd(previewEnd)}</b>
-          <span className="text-slate-500"> ({plan.hours} saat sonra)</span>
+        <div className="rounded-xl bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
+          {isFuture ? (
+            <>
+              <span className="text-slate-400">Bu oruç </span>
+              <b>{fmtEnd(chosenStart)}</b>
+              <span className="text-slate-400">'de planlanacak, </span>
+              <b>{fmtEnd(previewEnd)}</b>
+              <span className="text-slate-400">'de bitecek.</span>
+            </>
+          ) : (
+            <>
+              <span className="text-slate-400">Bitiş: </span>
+              <b>{fmtEnd(previewEnd)}</b>
+              <span className="text-slate-500"> ({plan.hours} saat sonra)</span>
+            </>
+          )}
         </div>
       )}
 
       <Button className="w-full" disabled={!planValid} onClick={start}>
-        Orucu Başlat
+        {isFuture ? 'Oruç Planla' : 'Orucu Başlat'}
       </Button>
     </Card>
   );
@@ -298,7 +392,10 @@ export default function Fasting() {
   const now = useNow();
   const fasts = useLiveQuery(() => db.fasts.orderBy('startedAt').reverse().toArray(), []) ?? [];
   const active = fasts.find((f) => !f.endedAt);
-  const past = fasts.filter((f) => f.endedAt);
+  const past = fasts
+    .filter((f) => f.endedAt)
+    .sort((a, b) => new Date(b.endedAt!).getTime() - new Date(a.endedAt!).getTime());
+  const lastEnded = past[0];
 
   const removeFast = async (f: Fast) => {
     if (!confirm('Bu oruç kaydı silinsin mi?')) return;
@@ -307,11 +404,27 @@ export default function Fasting() {
 
   const streak = calcStreak(fasts);
 
+  let mainCard = null;
+  if (active) {
+    const isPending = new Date(active.startedAt).getTime() > now;
+    mainCard = isPending ? <PendingFast fast={active} now={now} /> : <ActiveFast fast={active} now={now} />;
+  } else if (lastEnded) {
+    const eatingH = eatingHoursFor(lastEnded.targetHours);
+    const windowEndMs = new Date(lastEnded.endedAt!).getTime() + eatingH * 3600_000;
+    mainCard =
+      now < windowEndMs ? (
+        <EatingWindowCountdown lastEnded={lastEnded} now={now} />
+      ) : (
+        <EatingWindowElapsed lastEnded={lastEnded} now={now} />
+      );
+  }
+
   return (
     <div className="pb-4">
       <ScreenHeader title="Aralıklı Oruç" />
       <div className="space-y-4 px-4">
-        {active ? <ActiveFast fast={active} now={now} /> : <StartFast />}
+        {mainCard}
+        {!active && <StartFast key={lastEnded?.id ?? 'fresh'} initialProtocol={lastEnded?.protocol} initialHours={lastEnded?.targetHours} />}
 
         <Card className="flex items-center justify-between">
           <div>
