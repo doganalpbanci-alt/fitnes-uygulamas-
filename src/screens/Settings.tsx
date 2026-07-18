@@ -18,11 +18,30 @@ export default function Settings() {
       sessions: await db.sessions.toArray(),
       fasts: await db.fasts.toArray(),
     };
+    const filename = `fittakip-yedek-${data.exportedAt.slice(0, 10)}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const file = new File([blob], filename, { type: 'application/json' });
+
+    // Desteklenen tarayıcılarda (ör. Mac Safari) doğrudan AirDrop/e-posta/mesaj ile
+    // paylaşım menüsünü aç — dosyayı indirip elle taşımaya gerek kalmaz.
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'FitTakip Yedeği',
+          text: 'FitTakip verilerini başka bir cihaza aktarmak için bu dosyayı Ayarlar > İçe Aktar ile aç.',
+        });
+        return;
+      } catch (err) {
+        // Kullanıcı paylaşım menüsünü iptal etti — sessizce dosya indirmeye düş.
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `fittakip-yedek-${data.exportedAt.slice(0, 10)}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -107,9 +126,13 @@ export default function Settings() {
         </Card>
 
         <Card className="space-y-2">
-          <div className="font-semibold">Yedekleme</div>
+          <div className="font-semibold">Yedekleme ve Cihazlar Arası Taşıma</div>
           <div className="text-sm text-slate-400">
-            Veriler yalnızca bu cihazda tutulur. Arada bir yedek almanı öneririm.
+            Veriler yalnızca bu cihazda tutulur, sunucuya gitmez. Bilgisayarda kaydettiğin antrenmanları
+            telefonuna taşımak için: <b>Dışa Aktar</b>'a bas, açılan paylaşım menüsünden AirDrop / e-posta /
+            mesaj ile telefonuna gönder, telefonda dosyayı açıp <b>İçe Aktar</b>'a bas. Paylaşım menüsü
+            açılmazsa dosya inecek — onu telefonuna başka bir yoldan (AirDrop, e-posta, bulut) ulaştırman
+            yeterli.
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" className="flex-1" onClick={exportData}>
