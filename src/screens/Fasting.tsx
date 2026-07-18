@@ -388,6 +388,22 @@ function StartFast({ initialProtocol, initialHours }: { initialProtocol?: string
   );
 }
 
+function StartFastSection({ lastEnded }: { lastEnded?: Fast }) {
+  const [expanded, setExpanded] = useState(!lastEnded);
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="btn-tap w-full rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-3 text-center text-sm font-semibold text-slate-300"
+      >
+        + Erken Başlat / Farklı Planla
+      </button>
+    );
+  }
+  return <StartFast initialProtocol={lastEnded?.protocol} initialHours={lastEnded?.targetHours} />;
+}
+
 export default function Fasting() {
   const now = useNow();
   const fasts = useLiveQuery(() => db.fasts.orderBy('startedAt').reverse().toArray(), []) ?? [];
@@ -424,7 +440,7 @@ export default function Fasting() {
       <ScreenHeader title="Aralıklı Oruç" />
       <div className="space-y-4 px-4">
         {mainCard}
-        {!active && <StartFast key={lastEnded?.id ?? 'fresh'} initialProtocol={lastEnded?.protocol} initialHours={lastEnded?.targetHours} />}
+        {!active && <StartFastSection key={lastEnded?.id ?? 'fresh'} lastEnded={lastEnded} />}
 
         <Card className="flex items-center justify-between">
           <div>
