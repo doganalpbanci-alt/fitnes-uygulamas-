@@ -124,8 +124,18 @@ export interface DiaryEntry {
 
 export interface BodyWeightEntry {
   id?: number;
-  date: string;
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:MM (akıllı tartı gibi zaman damgalı kaynaklarda)
   weightKg: number;
+  bmi?: number;
+  bodyFatPct?: number;
+  muscleMassKg?: number;
+  muscleMassPct?: number;
+  waterPct?: number;
+  boneMassKg?: number;
+  visceralFat?: number;
+  bodyAge?: number;
+  source?: 'manual' | 'eufy';
 }
 
 class FitDB extends Dexie {

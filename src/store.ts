@@ -10,7 +10,8 @@ export type View =
   | { t: 'exerciseDetail'; exerciseId: string }
   | { t: 'sessionSummary'; sessionId: number }
   | { t: 'nutritionProfile' }
-  | { t: 'foodPicker'; mealType: MealType };
+  | { t: 'foodPicker'; mealType: MealType }
+  | { t: 'weightHistory' };
 
 interface NavState {
   tab: Tab;

@@ -132,6 +132,17 @@ export default function Nutrition() {
         }
       />
       <div className="space-y-3 px-4">
+        <Card className="flex items-center justify-between py-3" onClick={() => push({ t: 'weightHistory' })}>
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⚖️</span>
+            <div>
+              <div className="text-sm font-semibold">Kilo Takibi</div>
+              <div className="text-xs text-slate-400">Güncel: {profile.weightKg} kg</div>
+            </div>
+          </div>
+          <span className="text-slate-500">›</span>
+        </Card>
+
         <Card>
           <CalorieRing consumed={totals.calories} target={targets.calorieTarget} />
           <div className="mt-3 space-y-2.5">

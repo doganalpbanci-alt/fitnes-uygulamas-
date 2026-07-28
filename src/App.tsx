@@ -10,6 +10,7 @@ import Session from './screens/Session';
 import WorkoutSummary from './screens/WorkoutSummary';
 import NutritionProfile from './screens/NutritionProfile';
 import FoodPicker from './screens/FoodPicker';
+import WeightHistory from './screens/WeightHistory';
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'home', label: 'Ana', icon: '🏠' },
@@ -29,6 +30,7 @@ export default function App() {
   if (view.t === 'sessionSummary') return <WorkoutSummary sessionId={view.sessionId} />;
   if (view.t === 'nutritionProfile') return <NutritionProfile />;
   if (view.t === 'foodPicker') return <FoodPicker mealType={view.mealType} />;
+  if (view.t === 'weightHistory') return <WeightHistory />;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
