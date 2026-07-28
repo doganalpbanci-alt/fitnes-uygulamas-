@@ -1,13 +1,16 @@
 import { create } from 'zustand';
+import type { MealType } from './db';
 
-export type Tab = 'home' | 'fasting' | 'workout' | 'progress' | 'settings';
+export type Tab = 'home' | 'fasting' | 'nutrition' | 'workout' | 'progress' | 'settings';
 
 export type View =
   | { t: 'tabs' }
   | { t: 'editTemplate'; id?: number }
   | { t: 'session'; templateId: number }
   | { t: 'exerciseDetail'; exerciseId: string }
-  | { t: 'sessionSummary'; sessionId: number };
+  | { t: 'sessionSummary'; sessionId: number }
+  | { t: 'nutritionProfile' }
+  | { t: 'foodPicker'; mealType: MealType };
 
 interface NavState {
   tab: Tab;

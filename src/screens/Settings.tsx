@@ -17,6 +17,10 @@ export default function Settings() {
       schedule: await db.schedule.toArray(),
       sessions: await db.sessions.toArray(),
       fasts: await db.fasts.toArray(),
+      profile: await db.profile.toArray(),
+      foods: await db.foods.toArray(),
+      diaryEntries: await db.diaryEntries.toArray(),
+      bodyWeights: await db.bodyWeights.toArray(),
     };
     const filename = `fittakip-yedek-${data.exportedAt.slice(0, 10)}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -56,15 +60,24 @@ export default function Settings() {
         Array.isArray(data.sessions) &&
         (data.templates == null || Array.isArray(data.templates)) &&
         (data.schedule == null || Array.isArray(data.schedule)) &&
-        (data.fasts == null || Array.isArray(data.fasts));
+        (data.fasts == null || Array.isArray(data.fasts)) &&
+        (data.profile == null || Array.isArray(data.profile)) &&
+        (data.foods == null || Array.isArray(data.foods)) &&
+        (data.diaryEntries == null || Array.isArray(data.diaryEntries)) &&
+        (data.bodyWeights == null || Array.isArray(data.bodyWeights));
       if (!isValid) throw new Error('geçersiz dosya');
-      await db.transaction('rw', [db.exercises, db.templates, db.schedule, db.sessions, db.fasts], async () => {
-        await Promise.all([db.exercises.clear(), db.templates.clear(), db.schedule.clear(), db.sessions.clear(), db.fasts.clear()]);
+      const tables = [db.exercises, db.templates, db.schedule, db.sessions, db.fasts, db.profile, db.foods, db.diaryEntries, db.bodyWeights];
+      await db.transaction('rw', tables, async () => {
+        await Promise.all(tables.map((t) => t.clear()));
         await db.exercises.bulkAdd(data.exercises);
         await db.templates.bulkAdd(data.templates ?? []);
         await db.schedule.bulkAdd(data.schedule ?? []);
         await db.sessions.bulkAdd(data.sessions ?? []);
         await db.fasts.bulkAdd(data.fasts ?? []);
+        await db.profile.bulkAdd(data.profile ?? []);
+        await db.foods.bulkAdd(data.foods ?? []);
+        await db.diaryEntries.bulkAdd(data.diaryEntries ?? []);
+        await db.bodyWeights.bulkAdd(data.bodyWeights ?? []);
       });
       setMsg('✓ Yedek geri yüklendi.');
     } catch {
