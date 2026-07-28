@@ -73,12 +73,71 @@ export interface Fast {
   completed?: boolean;
 }
 
+export type Sex = 'male' | 'female';
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+export type NutritionGoal = 'lose' | 'maintain' | 'gain';
+
+export interface UserProfile {
+  id: number; // her zaman 1 — tekil profil
+  sex: Sex;
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  activityLevel: ActivityLevel;
+  goal: NutritionGoal;
+  goalRateKgPerWeek: number;
+}
+
+export interface FoodItem {
+  id: string; // barkod (OFF) ya da 'custom_' + zaman damgası
+  name: string;
+  brand?: string;
+  caloriesPer100g: number;
+  proteinPer100g: number;
+  carbsPer100g: number;
+  fatPer100g: number;
+  source: 'openfoodfacts' | 'custom' | 'ai';
+}
+
+export type MealType = 'kahvalti' | 'ogle' | 'aksam' | 'ara';
+
+export const MEAL_LABELS: Record<MealType, string> = {
+  kahvalti: 'Kahvaltı',
+  ogle: 'Öğle',
+  aksam: 'Akşam',
+  ara: 'Ara Öğün',
+};
+
+export interface DiaryEntry {
+  id?: number;
+  date: string; // YYYY-MM-DD
+  mealType: MealType;
+  foodId: string;
+  foodName: string;
+  grams: number;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  loggedAt: string;
+}
+
+export interface BodyWeightEntry {
+  id?: number;
+  date: string;
+  weightKg: number;
+}
+
 class FitDB extends Dexie {
   exercises!: Table<Exercise, string>;
   templates!: Table<WorkoutTemplate, number>;
   schedule!: Table<ScheduleDay, number>;
   sessions!: Table<WorkoutSession, number>;
   fasts!: Table<Fast, number>;
+  profile!: Table<UserProfile, number>;
+  foods!: Table<FoodItem, string>;
+  diaryEntries!: Table<DiaryEntry, number>;
+  bodyWeights!: Table<BodyWeightEntry, number>;
 
   constructor() {
     super('fittakip');
@@ -88,6 +147,17 @@ class FitDB extends Dexie {
       schedule: 'dayOfWeek',
       sessions: '++id, date, templateId',
       fasts: '++id, startedAt',
+    });
+    this.version(2).stores({
+      exercises: 'id, muscleGroup, type',
+      templates: '++id',
+      schedule: 'dayOfWeek',
+      sessions: '++id, date, templateId',
+      fasts: '++id, startedAt',
+      profile: 'id',
+      foods: 'id, source',
+      diaryEntries: '++id, date, mealType',
+      bodyWeights: '++id, date',
     });
     this.on('populate', async () => {
       await this.exercises.bulkAdd(SEED_EXERCISES);
