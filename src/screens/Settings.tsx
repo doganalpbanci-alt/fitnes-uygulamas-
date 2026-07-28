@@ -1,12 +1,15 @@
 import { useRef, useState } from 'react';
 import { db } from '../db';
 import { weightIncrement } from '../lib/overload';
+import { clearOpenAiKey, getOpenAiKey, setOpenAiKey } from '../lib/openaiVision';
 import { Button, Card, ScreenHeader } from '../components/ui';
 
 export default function Settings() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [inc, setInc] = useState(() => String(weightIncrement()));
   const [msg, setMsg] = useState('');
+  const [hasAiKey, setHasAiKey] = useState(() => !!getOpenAiKey());
+  const [aiKeyInput, setAiKeyInput] = useState('');
 
   const exportData = async () => {
     const data = {
@@ -95,6 +98,21 @@ export default function Settings() {
     }
   };
 
+  const saveAiKey = () => {
+    const k = aiKeyInput.trim();
+    if (!k) return;
+    setOpenAiKey(k);
+    setAiKeyInput('');
+    setHasAiKey(true);
+    setMsg('✓ OpenAI API anahtarı kaydedildi.');
+  };
+
+  const removeAiKey = () => {
+    clearOpenAiKey();
+    setHasAiKey(false);
+    setMsg('✓ API anahtarı kaldırıldı.');
+  };
+
   const wipe = async () => {
     if (!confirm('TÜM veriler silinecek (antrenmanlar, geçmiş, oruçlar). Emin misin?')) return;
     if (!confirm('Son kez soruyorum: gerçekten hepsi silinsin mi?')) return;
@@ -162,6 +180,45 @@ export default function Settings() {
               onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])}
             />
           </div>
+        </Card>
+
+        <Card className="space-y-2">
+          <div className="font-semibold">📷 Fotoğraftan Besin Tanıma (AI)</div>
+          <div className="text-sm text-slate-400">
+            Yemek fotoğrafını analiz edip besin değerlerini tahmin etmek için kendi OpenAI API anahtarını
+            gir. Anahtar yalnızca bu cihazda (tarayıcı belleğinde) saklanır, hiçbir sunucuya gönderilmez ve
+            JSON yedeklerine dahil edilmez. Her analiz kendi OpenAI hesabından ücretlendirilir.{' '}
+            <a
+              className="underline"
+              href="https://platform.openai.com/api-keys"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Anahtar almak için tıkla
+            </a>
+            .
+          </div>
+          {hasAiKey ? (
+            <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2.5">
+              <span className="text-sm text-emerald-300">✓ Anahtar kayıtlı</span>
+              <Button variant="ghost" className="!py-1.5 text-sm text-rose-400" onClick={removeAiKey}>
+                Kaldır
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={aiKeyInput}
+                onChange={(e) => setAiKeyInput(e.target.value)}
+                placeholder="sk-..."
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
+              />
+              <Button variant="secondary" onClick={saveAiKey}>
+                Kaydet
+              </Button>
+            </div>
+          )}
         </Card>
 
         <Card className="space-y-2">
