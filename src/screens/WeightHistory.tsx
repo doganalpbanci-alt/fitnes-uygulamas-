@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, todayStr } from '../db';
 import { addManualWeight } from '../lib/bodyWeight';
 import { fmtDate } from '../lib/format';
+import { computeWeightWeeklyBuckets, computeWeightWeeklyChange } from '../lib/weeklyStats';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import { LineChart } from './Progress';
@@ -11,6 +12,7 @@ import EufyImport from './EufyImport';
 export default function WeightHistory() {
   const back = useNav((s) => s.back);
   const entries = useLiveQuery(() => db.bodyWeights.toArray(), []) ?? [];
+  const profile = useLiveQuery(() => db.profile.get(1), []);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [weight, setWeight] = useState('');
@@ -34,6 +36,20 @@ export default function WeightHistory() {
     [entries],
   );
   const latest = sorted[0];
+
+  const weeklyBuckets = useMemo(() => computeWeightWeeklyBuckets(entries), [entries]);
+  const weeklyChange = useMemo(() => computeWeightWeeklyChange(weeklyBuckets), [weeklyBuckets]);
+  const weeklyChartPoints = useMemo(
+    () => weeklyBuckets.slice(-8).map((b) => ({ x: b.weekStart, y: b.avgWeightKg })),
+    [weeklyBuckets],
+  );
+
+  const deltaColor = (delta: number) => {
+    const goal = profile?.goal ?? 'maintain';
+    if (goal === 'lose') return delta < -0.05 ? 'text-emerald-400' : delta > 0.05 ? 'text-rose-400' : 'text-slate-400';
+    if (goal === 'gain') return delta > 0.05 ? 'text-emerald-400' : delta < -0.05 ? 'text-rose-400' : 'text-slate-400';
+    return Math.abs(delta) <= 0.3 ? 'text-emerald-400' : 'text-amber-400';
+  };
 
   const removeEntry = async (id?: number) => {
     if (id == null) return;
@@ -69,6 +85,36 @@ export default function WeightHistory() {
               )}
             </div>
             {chartPoints.length > 1 && <LineChart points={chartPoints} unit="kg" />}
+          </Card>
+        )}
+
+        {weeklyChange && (
+          <Card className="space-y-3">
+            <div className="font-semibold">Haftalık Özet</div>
+            <div className="flex items-baseline justify-between">
+              <div>
+                <div className="text-xs text-slate-400">Bu haftanın ortalaması</div>
+                <div className="text-xl font-bold">{weeklyChange.currentWeekAvg} kg</div>
+              </div>
+              {weeklyChange.deltaKg != null ? (
+                <div className="text-right">
+                  <div className="text-xs text-slate-400">Geçen haftaya göre</div>
+                  <div className={`text-lg font-bold ${deltaColor(weeklyChange.deltaKg)}`}>
+                    {weeklyChange.deltaKg > 0 ? '+' : ''}
+                    {weeklyChange.deltaKg} kg
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">Karşılaştırma için bir hafta daha veri gerekiyor</div>
+              )}
+            </div>
+            {weeklyChange.bodyFatDeltaPct != null && (
+              <div className="text-xs text-slate-400">
+                Yağ %: {weeklyChange.bodyFatDeltaPct > 0 ? '+' : ''}
+                {weeklyChange.bodyFatDeltaPct} (geçen haftaya göre)
+              </div>
+            )}
+            {weeklyChartPoints.length > 1 && <LineChart points={weeklyChartPoints} unit="kg" />}
           </Card>
         )}
 
