@@ -2,10 +2,50 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type MealType } from '../db';
 import { calcBMR, calcTDEE, calcCalorieTarget, calcMacroTargets } from '../lib/nutrition';
+import { computeNutritionWeeklyStats, type DayNutritionSummary } from '../lib/weeklyStats';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 
 const MEALS: MealType[] = ['kahvalti', 'ogle', 'aksam', 'ara'];
+
+function WeeklyCalorieBars({ days, target }: { days: DayNutritionSummary[]; target: number }) {
+  const h = 90;
+  const maxVal = Math.max(target, ...days.map((d) => d.calories), 1);
+  return (
+    <div>
+      <div className="relative" style={{ height: h }}>
+        <div className="absolute inset-x-0 border-t border-dashed border-white/20" style={{ bottom: (target / maxVal) * h }} />
+        <div className="absolute inset-0 flex items-end gap-1.5">
+          {days.map((d) => {
+            const barH = d.calories === 0 ? 2 : Math.max(4, (d.calories / maxVal) * h);
+            const over = d.calories > target;
+            return (
+              <div key={d.date} className="flex-1">
+                <div
+                  className={`w-full rounded-t-md ${
+                    d.calories === 0
+                      ? 'bg-white/[0.08]'
+                      : over
+                        ? 'bg-gradient-to-t from-rose-500 to-rose-400'
+                        : 'bg-gradient-to-t from-emerald-500 to-emerald-400'
+                  }`}
+                  style={{ height: barH }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-1 flex gap-1.5">
+        {days.map((d) => (
+          <div key={d.date} className="flex-1 text-center text-[10px] text-slate-500">
+            {new Date(d.date + 'T00:00:00').toLocaleDateString('tr-TR', { weekday: 'short' })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function CalorieRing({ consumed, target }: { consumed: number; target: number }) {
   const r = 80;
@@ -72,6 +112,13 @@ export default function Nutrition() {
   const profile = useLiveQuery(() => db.profile.get(1), []);
   const today = todayStr();
   const entries = useLiveQuery(() => db.diaryEntries.where('date').equals(today).toArray(), [today]) ?? [];
+  const weekCutoff = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return todayStr(d);
+  }, [today]);
+  const weekEntries = useLiveQuery(() => db.diaryEntries.where('date').aboveOrEqual(weekCutoff).toArray(), [weekCutoff]) ?? [];
+  const weekly = useMemo(() => computeNutritionWeeklyStats(weekEntries), [weekEntries]);
 
   const targets = useMemo(() => {
     if (!profile) return null;
@@ -150,6 +197,33 @@ export default function Nutrition() {
             <MacroBar label="Karbonhidrat" consumed={totals.carbsG} target={targets.carbsG} color="bg-gradient-to-r from-amber-400 to-orange-500" />
             <MacroBar label="Yağ" consumed={totals.fatG} target={targets.fatG} color="bg-gradient-to-r from-fuchsia-400 to-pink-500" />
           </div>
+        </Card>
+
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Haftalık Özet</div>
+            <div className="text-xs text-slate-400">{weekly.daysLogged}/7 gün kayıt</div>
+          </div>
+          {weekly.daysLogged === 0 ? (
+            <div className="text-sm text-slate-400">Bu hafta henüz kayıt yok.</div>
+          ) : (
+            <>
+              <WeeklyCalorieBars days={weekly.days} target={targets.calorieTarget} />
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <div className="text-xs text-slate-400">Ort. kalori (kayıtlı günler)</div>
+                  <div className="font-bold">{weekly.avgCalories} kcal</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">Hedefe göre</div>
+                  <div className={`font-bold ${weekly.avgCalories > targets.calorieTarget ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {weekly.avgCalories > targets.calorieTarget ? '+' : ''}
+                    {weekly.avgCalories - targets.calorieTarget} kcal
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </Card>
 
         {MEALS.map((meal) => {
