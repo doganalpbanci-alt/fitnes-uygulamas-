@@ -3,6 +3,7 @@ import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
 import { searchFoods, type OFFProduct } from '../lib/openFoodFacts';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
+import PhotoFoodScan from './PhotoFoodScan';
 
 function toFoodItem(p: OFFProduct): FoodItem {
   return {
@@ -185,6 +186,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<FoodItem | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     const q = query.trim();
@@ -232,6 +234,13 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
         />
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+        <Card className="flex items-center justify-between py-2.5" onClick={() => setScanning(true)}>
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📷</span>
+            <div className="text-sm font-semibold">Fotoğraftan Ekle (AI)</div>
+          </div>
+          <span className="text-slate-500">›</span>
+        </Card>
         {loading && <div className="py-4 text-center text-sm text-slate-400">Aranıyor…</div>}
         {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
         {!loading &&
@@ -252,6 +261,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
         )}
         <CustomFoodForm onCreated={setSelected} />
       </div>
+      {scanning && <PhotoFoodScan mealType={mealType} onClose={() => setScanning(false)} onDone={back} />}
     </div>
   );
 }
