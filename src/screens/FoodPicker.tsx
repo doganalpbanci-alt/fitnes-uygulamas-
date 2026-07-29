@@ -14,6 +14,7 @@ import {
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import PhotoFoodScan from './PhotoFoodScan';
+import TextFoodScan from './TextFoodScan';
 
 const SOURCE_ICON: Record<FoodItem['source'], string> = {
   openfoodfacts: '🌐',
@@ -282,6 +283,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const [error, setError] = useState('');
   const [opened, setOpened] = useState<{ food: FoodItem; grams?: number } | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [selection, setSelection] = useState<Map<string, FoodRow>>(new Map());
   const [showAllSameMeal, setShowAllSameMeal] = useState(false);
 
@@ -421,6 +423,16 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
               </div>
               <span className="text-slate-500">›</span>
             </Card>
+            <Card className="flex items-center justify-between py-2.5" onClick={() => setDescribing(true)}>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✍️</span>
+                <div>
+                  <div className="text-sm font-semibold">AI'a Anlat (Yazarak)</div>
+                  <div className="text-xs text-slate-400">Veritabanında bulamadığın bir yemek için</div>
+                </div>
+              </div>
+              <span className="text-slate-500">›</span>
+            </Card>
 
             {q.length >= 2 && localMatches.length > 0 && (
               <div className="space-y-2">
@@ -463,7 +475,11 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
             )}
 
             {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
-            {showEmptyState && <div className="py-2 text-center text-sm text-slate-400">Sonuç bulunamadı.</div>}
+            {showEmptyState && (
+              <div className="py-2 text-center text-sm text-slate-400">
+                Sonuç bulunamadı. Yukarıdaki "AI'a Anlat" ile de ekleyebilirsin.
+              </div>
+            )}
 
             <CustomFoodForm onCreated={(food) => setOpened({ food })} />
           </>
@@ -556,6 +572,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
       )}
 
       {scanning && <PhotoFoodScan mealType={mealType} onClose={() => setScanning(false)} onDone={back} />}
+      {describing && <TextFoodScan mealType={mealType} onClose={() => setDescribing(false)} onDone={back} />}
     </div>
   );
 }
