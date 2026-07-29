@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
 import { searchFoods, type OFFProduct } from '../lib/openFoodFacts';
+import { computeFrequentFoods, dedupeFoodsByName, fuzzyFilterSort, type FrequentFood } from '../lib/foodSearch';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import PhotoFoodScan from './PhotoFoodScan';
@@ -18,18 +20,43 @@ function toFoodItem(p: OFFProduct): FoodItem {
   };
 }
 
+function frequentToFoodItem(f: FrequentFood): FoodItem {
+  return {
+    id: f.foodId,
+    name: f.name,
+    caloriesPer100g: f.caloriesPer100g,
+    proteinPer100g: f.proteinPer100g,
+    carbsPer100g: f.carbsPer100g,
+    fatPer100g: f.fatPer100g,
+    source: 'custom',
+  };
+}
+
+const SOURCE_ICON: Record<FoodItem['source'], string> = {
+  openfoodfacts: '🌐',
+  custom: '✏️',
+  ai: '📷',
+};
+
+interface Selection {
+  food: FoodItem;
+  grams?: number;
+}
+
 function GramsStep({
   food,
   mealType,
+  initialGrams,
   onDone,
   onBack,
 }: {
   food: FoodItem;
   mealType: MealType;
+  initialGrams?: number;
   onDone: () => void;
   onBack: () => void;
 }) {
-  const [grams, setGrams] = useState('100');
+  const [grams, setGrams] = useState(String(initialGrams ?? 100));
   const g = Math.max(0, Number(grams) || 0);
   const factor = g / 100;
   const calories = Math.round(food.caloriesPer100g * factor);
@@ -185,11 +212,22 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const [results, setResults] = useState<OFFProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState<FoodItem | null>(null);
+  const [selected, setSelected] = useState<Selection | null>(null);
   const [scanning, setScanning] = useState(false);
 
+  const myFoods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
+  const diaryEntries = useLiveQuery(() => db.diaryEntries.toArray(), []) ?? [];
+  const frequent = useMemo(() => computeFrequentFoods(diaryEntries), [diaryEntries]);
+
+  const q = query.trim();
+
+  const localMatches = useMemo(
+    () => (q.length >= 2 ? fuzzyFilterSort(q, dedupeFoodsByName(myFoods), (f) => f.name, 0.3).slice(0, 8) : []),
+    [q, myFoods],
+  );
+  const rankedResults = useMemo(() => fuzzyFilterSort(q, results, (p) => p.name, 0), [q, results]);
+
   useEffect(() => {
-    const q = query.trim();
     if (q.length < 2) {
       setResults([]);
       setError('');
@@ -208,32 +246,38 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
       }
     }, 500);
     return () => clearTimeout(id);
-  }, [query]);
+  }, [q]);
 
   if (selected) {
     return (
       <GramsStep
-        food={selected}
+        food={selected.food}
         mealType={mealType}
+        initialGrams={selected.grams}
         onBack={() => setSelected(null)}
         onDone={back}
       />
     );
   }
 
+  const showEmptyState = q.length >= 2 && !loading && localMatches.length === 0 && rankedResults.length === 0 && !error;
+
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-[#070a14]">
       <ScreenHeader title={`${MEAL_LABELS[mealType]} · Besin Ekle`} onBack={back} />
       <div className="px-4 pb-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Besin ara… (örn. yulaf ezmesi)"
-          autoFocus
-          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm"
-        />
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Besin ara… (örn. yulaf ezmesi)"
+            autoFocus
+            className="w-full rounded-xl border border-white/10 bg-white/[0.04] py-2.5 pl-9 pr-3 text-sm"
+          />
+        </div>
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
         <Card className="flex items-center justify-between py-2.5" onClick={() => setScanning(true)}>
           <div className="flex items-center gap-2">
             <span className="text-xl">📷</span>
@@ -241,25 +285,73 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
           </div>
           <span className="text-slate-500">›</span>
         </Card>
-        {loading && <div className="py-4 text-center text-sm text-slate-400">Aranıyor…</div>}
-        {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
-        {!loading &&
-          results.map((p) => (
-            <Card key={p.id} className="flex items-center justify-between py-2.5" onClick={() => setSelected(toFoodItem(p))}>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold">{p.name}</div>
-                <div className="truncate text-xs text-slate-400">
-                  {p.brand ? `${p.brand} · ` : ''}
-                  {p.caloriesPer100g} kcal / 100g
-                </div>
-              </div>
-              <span className="text-emerald-400">+</span>
-            </Card>
-          ))}
-        {!loading && query.trim().length >= 2 && results.length === 0 && !error && (
-          <div className="py-2 text-center text-sm text-slate-400">Sonuç bulunamadı.</div>
+
+        {q.length < 2 && frequent.length > 0 && (
+          <div className="space-y-2">
+            <div className="px-1 text-sm font-semibold text-slate-400">⭐ Sık Yediklerin</div>
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+              {frequent.map((f) => (
+                <button
+                  key={f.name}
+                  onClick={() => setSelected({ food: frequentToFoodItem(f), grams: f.lastGrams })}
+                  className="btn-tap flex shrink-0 flex-col items-start gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-left"
+                  style={{ minWidth: 128, maxWidth: 168 }}
+                >
+                  <span className="w-full truncate text-sm font-semibold">{f.name}</span>
+                  <span className="text-xs text-slate-400">
+                    {f.caloriesPer100g} kcal/100g · ×{f.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
-        <CustomFoodForm onCreated={setSelected} />
+
+        {q.length >= 2 && localMatches.length > 0 && (
+          <div className="space-y-2">
+            <div className="px-1 text-sm font-semibold text-slate-400">🍽️ Senin Besinlerin</div>
+            {localMatches.map((f) => (
+              <Card key={f.id} className="flex items-center justify-between py-2.5" onClick={() => setSelected({ food: f })}>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold">
+                    <span className="mr-1">{SOURCE_ICON[f.source]}</span>
+                    {f.name}
+                  </div>
+                  <div className="truncate text-xs text-slate-400">
+                    {f.brand ? `${f.brand} · ` : ''}
+                    {f.caloriesPer100g} kcal / 100g
+                  </div>
+                </div>
+                <span className="text-emerald-400">+</span>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {q.length >= 2 && (loading || rankedResults.length > 0) && (
+          <div className="space-y-2">
+            <div className="px-1 text-sm font-semibold text-slate-400">🌐 Besin Veritabanı</div>
+            {loading && <div className="py-2 text-center text-sm text-slate-400">Aranıyor…</div>}
+            {!loading &&
+              rankedResults.map((p) => (
+                <Card key={p.id} className="flex items-center justify-between py-2.5" onClick={() => setSelected({ food: toFoodItem(p) })}>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold">{p.name}</div>
+                    <div className="truncate text-xs text-slate-400">
+                      {p.brand ? `${p.brand} · ` : ''}
+                      {p.caloriesPer100g} kcal / 100g
+                    </div>
+                  </div>
+                  <span className="text-emerald-400">+</span>
+                </Card>
+              ))}
+          </div>
+        )}
+
+        {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
+        {showEmptyState && <div className="py-2 text-center text-sm text-slate-400">Sonuç bulunamadı.</div>}
+
+        <CustomFoodForm onCreated={(food) => setSelected({ food })} />
       </div>
       {scanning && <PhotoFoodScan mealType={mealType} onClose={() => setScanning(false)} onDone={back} />}
     </div>
