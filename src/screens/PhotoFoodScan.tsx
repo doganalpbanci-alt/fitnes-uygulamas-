@@ -4,7 +4,7 @@ import {
   analyzeFoodPhoto,
   getOpenAiKey,
   sendCorrection,
-  type AiFoodResult,
+  type AiFoodItem,
   type ChatMessage,
 } from '../lib/openaiVision';
 import { useNav } from '../store';
@@ -13,6 +13,10 @@ import { Button, Card, ScreenHeader } from '../components/ui';
 interface ChatLogEntry {
   role: 'user' | 'assistant';
   text: string;
+}
+
+function blankItem(): AiFoodItem {
+  return { name: '', grams: 100, calories: 0, proteinG: 0, carbsG: 0, fatG: 0 };
 }
 
 export default function PhotoFoodScan({
@@ -31,7 +35,7 @@ export default function PhotoFoodScan({
   const [photo, setPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<AiFoodResult | null>(null);
+  const [items, setItems] = useState<AiFoodItem[] | null>(null);
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [chatLog, setChatLog] = useState<ChatLogEntry[]>([]);
   const [correction, setCorrection] = useState('');
@@ -39,7 +43,7 @@ export default function PhotoFoodScan({
 
   const onFile = (file: File) => {
     setError('');
-    setResult(null);
+    setItems(null);
     setMessages(null);
     setChatLog([]);
     const reader = new FileReader();
@@ -53,7 +57,7 @@ export default function PhotoFoodScan({
     setError('');
     try {
       const { turn, messages: msgs } = await analyzeFoodPhoto(photo);
-      setResult(turn.result);
+      setItems(turn.items);
       setMessages(msgs);
       setChatLog([{ role: 'assistant', text: turn.reply }]);
     } catch (err) {
@@ -69,14 +73,14 @@ export default function PhotoFoodScan({
 
   const sendCorrectionMsg = async () => {
     const text = correction.trim();
-    if (!text || !messages) return;
+    if (!text || !messages || !items) return;
     setCorrecting(true);
     setError('');
     setChatLog((log) => [...log, { role: 'user', text }]);
     setCorrection('');
     try {
-      const { turn, messages: msgs } = await sendCorrection(messages, text);
-      setResult(turn.result);
+      const { turn, messages: msgs } = await sendCorrection(messages, items, text);
+      setItems(turn.items);
       setMessages(msgs);
       setChatLog((log) => [...log, { role: 'assistant', text: turn.reply }]);
     } catch (err) {
@@ -90,36 +94,65 @@ export default function PhotoFoodScan({
     }
   };
 
+  const updateItem = (i: number, patch: Partial<AiFoodItem>) => {
+    setItems((prev) => (prev ? prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) : prev));
+  };
+
+  const removeItem = (i: number) => {
+    setItems((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev));
+  };
+
+  const addItem = () => {
+    setItems((prev) => [...(prev ?? []), blankItem()]);
+  };
+
   const goToSettings = () => {
     setTab('settings');
     onClose();
   };
 
+  const total = (items ?? []).reduce(
+    (acc, it) => ({
+      calories: acc.calories + it.calories,
+      proteinG: acc.proteinG + it.proteinG,
+      carbsG: acc.carbsG + it.carbsG,
+      fatG: acc.fatG + it.fatG,
+    }),
+    { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+  );
+  const validItems = (items ?? []).filter((it) => it.name.trim().length > 0);
+
   const confirm = async () => {
-    if (!result) return;
-    const factor = result.grams > 0 ? 100 / result.grams : 1;
-    const food: FoodItem = {
-      id: 'ai_' + Date.now(),
-      name: result.name,
-      caloriesPer100g: Math.round(result.calories * factor),
-      proteinPer100g: Math.round(result.proteinG * factor * 10) / 10,
-      carbsPer100g: Math.round(result.carbsG * factor * 10) / 10,
-      fatPer100g: Math.round(result.fatG * factor * 10) / 10,
-      source: 'ai',
-    };
-    await db.foods.put(food);
-    await db.diaryEntries.add({
-      date: new Date().toISOString().slice(0, 10),
-      mealType,
-      foodId: food.id,
-      foodName: food.name,
-      grams: result.grams,
-      calories: result.calories,
-      proteinG: result.proteinG,
-      carbsG: result.carbsG,
-      fatG: result.fatG,
-      loggedAt: new Date().toISOString(),
-    });
+    if (validItems.length === 0) return;
+    const now = Date.now();
+    const date = new Date().toISOString().slice(0, 10);
+    const loggedAt = new Date().toISOString();
+    for (let i = 0; i < validItems.length; i++) {
+      const it = validItems[i];
+      const factor = it.grams > 0 ? 100 / it.grams : 1;
+      const food: FoodItem = {
+        id: `ai_${now}_${i}`,
+        name: it.name,
+        caloriesPer100g: Math.round(it.calories * factor),
+        proteinPer100g: Math.round(it.proteinG * factor * 10) / 10,
+        carbsPer100g: Math.round(it.carbsG * factor * 10) / 10,
+        fatPer100g: Math.round(it.fatG * factor * 10) / 10,
+        source: 'ai',
+      };
+      await db.foods.put(food);
+      await db.diaryEntries.add({
+        date,
+        mealType,
+        foodId: food.id,
+        foodName: it.name,
+        grams: it.grams,
+        calories: it.calories,
+        proteinG: it.proteinG,
+        carbsG: it.carbsG,
+        fatG: it.fatG,
+        loggedAt,
+      });
+    }
     onDone();
   };
 
@@ -176,7 +209,7 @@ export default function PhotoFoodScan({
           </Card>
         )}
 
-        {photo && !result && (
+        {photo && !items && (
           <>
             <Card className="space-y-3">
               <img src={photo} alt="Seçilen fotoğraf" className="w-full rounded-xl object-cover" style={{ maxHeight: 280 }} />
@@ -185,7 +218,9 @@ export default function PhotoFoodScan({
                   Analiz Et
                 </Button>
               )}
-              {loading && <div className="text-center text-sm text-slate-400">Analiz ediliyor…</div>}
+              {loading && (
+                <div className="text-center text-sm text-slate-400">Tabaktaki besinler tek tek analiz ediliyor…</div>
+              )}
               {error && <div className="text-center text-sm text-rose-400">{error}</div>}
             </Card>
             <Button
@@ -201,75 +236,112 @@ export default function PhotoFoodScan({
           </>
         )}
 
-        {result && (
+        {items && (
           <>
-            <Card className="space-y-1 text-center">
-              <div className="text-xs text-slate-400">AI tahmini — gerekirse aşağıdan düzelt</div>
-              <input
-                value={result.name}
-                onChange={(e) => setResult({ ...result, name: e.target.value })}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-center font-bold"
-              />
-            </Card>
-            <Card>
-              <label className="block">
-                <span className="text-sm text-slate-400">Porsiyon (gram)</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={result.grams}
-                  onChange={(e) => setResult({ ...result, grams: Math.max(0, Number(e.target.value) || 0) })}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-center text-2xl font-bold"
-                />
-              </label>
-            </Card>
-            <Card className="grid grid-cols-4 gap-2 text-center">
-              <label className="block">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={result.calories}
-                  onChange={(e) => setResult({ ...result, calories: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-lg font-bold text-emerald-400"
-                />
-                <div className="text-[10px] text-slate-400">kcal</div>
-              </label>
-              <label className="block">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={result.proteinG}
-                  onChange={(e) => setResult({ ...result, proteinG: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-lg font-bold"
-                />
-                <div className="text-[10px] text-slate-400">Protein</div>
-              </label>
-              <label className="block">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={result.carbsG}
-                  onChange={(e) => setResult({ ...result, carbsG: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-lg font-bold"
-                />
-                <div className="text-[10px] text-slate-400">Karb.</div>
-              </label>
-              <label className="block">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={result.fatG}
-                  onChange={(e) => setResult({ ...result, fatG: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-lg font-bold"
-                />
-                <div className="text-[10px] text-slate-400">Yağ</div>
-              </label>
-            </Card>
+            <div className="px-1 text-xs text-slate-400">
+              AI tabakta {items.length} öğe tespit etti — her birini kontrol et, gerekirse düzelt ya da kaldır.
+            </div>
+            {items.map((it, i) => (
+              <Card key={i} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={it.name}
+                    onChange={(e) => updateItem(i, { name: e.target.value })}
+                    placeholder="Besin adı"
+                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold"
+                  />
+                  <button
+                    onClick={() => removeItem(i)}
+                    className="shrink-0 rounded-lg p-2 text-slate-500 active:bg-white/10"
+                    aria-label="Öğeyi kaldır"
+                  >
+                    🗑️
+                  </button>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  <label className="block">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={it.grams}
+                      onChange={(e) => updateItem(i, { grams: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
+                    />
+                    <div className="text-center text-[9px] text-slate-400">gram</div>
+                  </label>
+                  <label className="block">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={it.calories}
+                      onChange={(e) => updateItem(i, { calories: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold text-emerald-400"
+                    />
+                    <div className="text-center text-[9px] text-slate-400">kcal</div>
+                  </label>
+                  <label className="block">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={it.proteinG}
+                      onChange={(e) => updateItem(i, { proteinG: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
+                    />
+                    <div className="text-center text-[9px] text-slate-400">P g</div>
+                  </label>
+                  <label className="block">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={it.carbsG}
+                      onChange={(e) => updateItem(i, { carbsG: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
+                    />
+                    <div className="text-center text-[9px] text-slate-400">K g</div>
+                  </label>
+                  <label className="block">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={it.fatG}
+                      onChange={(e) => updateItem(i, { fatG: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
+                    />
+                    <div className="text-center text-[9px] text-slate-400">Y g</div>
+                  </label>
+                </div>
+              </Card>
+            ))}
+
+            <Button variant="ghost" className="w-full !py-2 text-sm" onClick={addItem}>
+              + Öğe Ekle
+            </Button>
+
+            {items.length > 0 && (
+              <Card className="grid grid-cols-4 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-bold text-emerald-400">{Math.round(total.calories)}</div>
+                  <div className="text-[10px] text-slate-400">toplam kcal</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">{Math.round(total.proteinG * 10) / 10}g</div>
+                  <div className="text-[10px] text-slate-400">Protein</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">{Math.round(total.carbsG * 10) / 10}g</div>
+                  <div className="text-[10px] text-slate-400">Karb.</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold">{Math.round(total.fatG * 10) / 10}g</div>
+                  <div className="text-[10px] text-slate-400">Yağ</div>
+                </div>
+              </Card>
+            )}
 
             <Card className="space-y-2">
               <div className="text-sm font-semibold text-slate-300">🤖 AI ile Doğrula / Düzelt</div>
@@ -293,7 +365,7 @@ export default function PhotoFoodScan({
                   value={correction}
                   onChange={(e) => setCorrection(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !correcting && sendCorrectionMsg()}
-                  placeholder="örn. 'bu tavuk değil somon' ya da 'porsiyon 500 gram'"
+                  placeholder="örn. 'bu peynir değil beyaz peynir' ya da 'yumurta yok say'"
                   className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
                 />
                 <Button variant="secondary" disabled={correcting || !correction.trim()} onClick={sendCorrectionMsg}>
@@ -302,8 +374,8 @@ export default function PhotoFoodScan({
               </div>
             </Card>
 
-            <Button className="w-full" onClick={confirm}>
-              {MEAL_LABELS[mealType]} Öğününe Ekle
+            <Button className="w-full" disabled={validItems.length === 0} onClick={confirm}>
+              {MEAL_LABELS[mealType]} Öğününe Ekle ({validItems.length} öğe)
             </Button>
           </>
         )}
