@@ -1,4 +1,4 @@
-import type { DiaryEntry, FoodItem } from '../db';
+import type { DiaryEntry, FoodItem, MealType } from '../db';
 
 function normalize(s: string): string {
   return s
@@ -121,5 +121,46 @@ export function computeFrequentFoods(entries: DiaryEntry[], limit = 12): Frequen
       };
     })
     .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+}
+
+export interface RecentFood {
+  name: string;
+  foodId: string;
+  lastGrams: number;
+  lastLoggedAt: string;
+  lastMealType: MealType;
+  caloriesPer100g: number;
+  proteinPer100g: number;
+  carbsPer100g: number;
+  fatPer100g: number;
+}
+
+/** Günlükte kaydedilmiş besinleri (isme göre gruplanmış), en son ne zaman/hangi öğünde/ne kadar
+ * yendiğiyle birlikte, en yeniden en eskiye doğru döndürür. */
+export function computeRecentFoods(entries: DiaryEntry[], limit = 40): RecentFood[] {
+  const byName = new Map<string, DiaryEntry[]>();
+  for (const e of entries) {
+    const key = normalize(e.foodName);
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key)!.push(e);
+  }
+  return [...byName.values()]
+    .map((rows) => {
+      const latest = [...rows].sort((a, b) => b.loggedAt.localeCompare(a.loggedAt))[0];
+      const factor = latest.grams > 0 ? 100 / latest.grams : 1;
+      return {
+        name: latest.foodName,
+        foodId: latest.foodId,
+        lastGrams: latest.grams,
+        lastLoggedAt: latest.loggedAt,
+        lastMealType: latest.mealType,
+        caloriesPer100g: Math.round(latest.calories * factor),
+        proteinPer100g: Math.round(latest.proteinG * factor * 10) / 10,
+        carbsPer100g: Math.round(latest.carbsG * factor * 10) / 10,
+        fatPer100g: Math.round(latest.fatG * factor * 10) / 10,
+      };
+    })
+    .sort((a, b) => b.lastLoggedAt.localeCompare(a.lastLoggedAt))
     .slice(0, limit);
 }
