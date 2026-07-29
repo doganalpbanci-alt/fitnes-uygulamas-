@@ -38,16 +38,17 @@ export interface ChatMessage {
 const MODEL = 'gpt-4o-mini';
 
 const SYSTEM_PROMPT =
-  'Sen bir beslenme uzmanısın. Kullanıcı sana bir tabak/yemek fotoğrafı gönderir. Fotoğraftaki HER AYRI ' +
-  'besini/yemeği TEK TEK, ayrı satırlar halinde listele (örn. bir kahvaltı tabağında "haşlanmış yumurta", ' +
-  '"beyaz peynir", "zeytin", "ekmek", "kızarmış patates" ayrı ayrı öğeler olmalı — hepsini tek bir satırda ' +
-  'toplama). Aynı türden birden fazla parça varsa tek satırda birleştirebilirsin (örn. "2 haşlanmış yumurta"). ' +
-  'Her öğe için gördüğün porsiyonun TAMAMI için (100g için değil) besin değerlerini tahmin et. Kullanıcı bir ' +
-  'düzeltme yaparsa ("bu peynir değil beyaz peynir", "patates miktarı daha az", "yumurta yok say" gibi) bunu ' +
-  'dikkate alıp ilgili öğeyi güncelle veya kaldır, ardından GÜNCEL TÜM listeyi yeniden gönder. HER ZAMAN sadece ' +
-  'şu şekilde bir JSON nesnesi döndür, başka hiçbir şey yazma: {"reply": kullanıcıya kısa Türkçe yanıtın (1 ' +
-  'cümle), "items": [{"name": Türkçe besin adı, "estimatedGrams": sayı, "calories": sayı, "proteinG": sayı, ' +
-  '"carbsG": sayı, "fatG": sayı}, ...]}';
+  'Sen bir beslenme uzmanısın. Kullanıcı sana ya bir tabak/yemek fotoğrafı ya da yediği yemeğin yazılı bir ' +
+  'tarifini gönderir (besin veritabanında bulamadığı ev yemekleri, yöresel tarifler için). HER AYRI besini/' +
+  'yemeği TEK TEK, ayrı satırlar halinde listele (örn. bir kahvaltı tabağında ya da tarifinde "haşlanmış ' +
+  'yumurta", "beyaz peynir", "zeytin", "ekmek", "kızarmış patates" ayrı ayrı öğeler olmalı — hepsini tek bir ' +
+  'satırda toplama). Aynı türden birden fazla parça varsa tek satırda birleştirebilirsin (örn. "2 haşlanmış ' +
+  'yumurta"). Her öğe için tarif edilen/gördüğün porsiyonun TAMAMI için (100g için değil) besin değerlerini ' +
+  'tahmin et. Kullanıcı bir düzeltme yaparsa ("bu peynir değil beyaz peynir", "patates miktarı daha az", ' +
+  '"yumurta yok say" gibi) bunu dikkate alıp ilgili öğeyi güncelle veya kaldır, ardından GÜNCEL TÜM listeyi ' +
+  'yeniden gönder. HER ZAMAN sadece şu şekilde bir JSON nesnesi döndür, başka hiçbir şey yazma: {"reply": ' +
+  'kullanıcıya kısa Türkçe yanıtın (1 cümle), "items": [{"name": Türkçe besin adı, "estimatedGrams": sayı, ' +
+  '"calories": sayı, "proteinG": sayı, "carbsG": sayı, "fatG": sayı}, ...]}';
 
 function num(v: unknown): number {
   return typeof v === 'number' && isFinite(v) ? Math.max(0, v) : 0;
@@ -103,6 +104,18 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
 /** Fotoğraftaki tabağı tanıyıp her besini ayrı ayrı listeler. */
 export function analyzeFoodPhoto(dataUrl: string): Promise<{ turn: AiChatTurn; messages: ChatMessage[] }> {
   return callChat(buildInitialMessages(dataUrl));
+}
+
+export function buildInitialMessagesFromText(description: string): ChatMessage[] {
+  return [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: `Şu yemeği/besinleri tarif ediyorum, her birini ayrı ayrı tanıyıp besin değerlerini tahmin et: ${description}` },
+  ];
+}
+
+/** Besin veritabanında bulunamayan bir yemeği yazılı tarifinden tanıyıp her besini ayrı ayrı listeler. */
+export function analyzeFoodDescription(description: string): Promise<{ turn: AiChatTurn; messages: ChatMessage[] }> {
+  return callChat(buildInitialMessagesFromText(description));
 }
 
 /** Kullanıcının düzeltme mesajını sohbete ekleyip öğe listesini güncelletir.
