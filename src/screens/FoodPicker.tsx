@@ -1,36 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
+import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
+import { calcBMR, calcCalorieTarget, calcTDEE } from '../lib/nutrition';
 import { searchFoods, type OFFProduct } from '../lib/openFoodFacts';
-import { computeFrequentFoods, dedupeFoodsByName, fuzzyFilterSort, type FrequentFood } from '../lib/foodSearch';
+import {
+  computeFrequentFoods,
+  computeRecentFoods,
+  dedupeFoodsByName,
+  fuzzyFilterSort,
+  type FrequentFood,
+  type RecentFood,
+} from '../lib/foodSearch';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import PhotoFoodScan from './PhotoFoodScan';
-
-function toFoodItem(p: OFFProduct): FoodItem {
-  return {
-    id: p.id,
-    name: p.name,
-    brand: p.brand,
-    caloriesPer100g: p.caloriesPer100g,
-    proteinPer100g: p.proteinPer100g,
-    carbsPer100g: p.carbsPer100g,
-    fatPer100g: p.fatPer100g,
-    source: 'openfoodfacts',
-  };
-}
-
-function frequentToFoodItem(f: FrequentFood): FoodItem {
-  return {
-    id: f.foodId,
-    name: f.name,
-    caloriesPer100g: f.caloriesPer100g,
-    proteinPer100g: f.proteinPer100g,
-    carbsPer100g: f.carbsPer100g,
-    fatPer100g: f.fatPer100g,
-    source: 'custom',
-  };
-}
 
 const SOURCE_ICON: Record<FoodItem['source'], string> = {
   openfoodfacts: '🌐',
@@ -38,9 +21,86 @@ const SOURCE_ICON: Record<FoodItem['source'], string> = {
   ai: '📷',
 };
 
-interface Selection {
+interface FoodRow {
+  key: string;
   food: FoodItem;
-  grams?: number;
+  grams: number;
+  calories: number;
+  servingLabel: string;
+}
+
+function rowFromFoodItem(food: FoodItem, grams = 100): FoodRow {
+  const factor = grams / 100;
+  return { key: food.id, food, grams, calories: Math.round(food.caloriesPer100g * factor), servingLabel: `${grams} g` };
+}
+
+function rowFromOff(p: OFFProduct): FoodRow {
+  return rowFromFoodItem(
+    { id: p.id, name: p.name, brand: p.brand, caloriesPer100g: p.caloriesPer100g, proteinPer100g: p.proteinPer100g, carbsPer100g: p.carbsPer100g, fatPer100g: p.fatPer100g, source: 'openfoodfacts' },
+    100,
+  );
+}
+
+function rowFromFrequent(f: FrequentFood): FoodRow {
+  return {
+    key: f.foodId,
+    food: { id: f.foodId, name: f.name, caloriesPer100g: f.caloriesPer100g, proteinPer100g: f.proteinPer100g, carbsPer100g: f.carbsPer100g, fatPer100g: f.fatPer100g, source: 'custom' },
+    grams: f.lastGrams,
+    calories: Math.round((f.caloriesPer100g * f.lastGrams) / 100),
+    servingLabel: `${f.lastGrams} g`,
+  };
+}
+
+function rowFromRecent(f: RecentFood): FoodRow {
+  return {
+    key: f.foodId,
+    food: { id: f.foodId, name: f.name, caloriesPer100g: f.caloriesPer100g, proteinPer100g: f.proteinPer100g, carbsPer100g: f.carbsPer100g, fatPer100g: f.fatPer100g, source: 'custom' },
+    grams: f.lastGrams,
+    calories: Math.round((f.caloriesPer100g * f.lastGrams) / 100),
+    servingLabel: `${f.lastGrams} g`,
+  };
+}
+
+function FoodRowCard({
+  row,
+  tgd,
+  selected,
+  onToggleSelect,
+  onOpen,
+}: {
+  row: FoodRow;
+  tgd: number | null;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <Card className="flex items-center justify-between py-2.5">
+      <button onClick={onOpen} className="min-w-0 flex-1 text-left">
+        <div className="truncate font-semibold">
+          <span className="mr-1">{SOURCE_ICON[row.food.source]}</span>
+          {row.food.name}
+        </div>
+        <div className="truncate text-xs">
+          <span className="text-emerald-400">{row.servingLabel}</span>
+          <span className="text-slate-500"> · {row.calories} kcal</span>
+          {tgd != null && <span className="text-slate-500"> · TGD %{tgd}</span>}
+        </div>
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSelect();
+        }}
+        aria-label={selected ? 'Seçimi kaldır' : 'Seç'}
+        className={`ml-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
+          selected ? 'border-emerald-400 bg-emerald-400 text-slate-950' : 'border-white/20 text-transparent'
+        }`}
+      >
+        <span className="text-xs leading-none">✓</span>
+      </button>
+    </Card>
+  );
 }
 
 function GramsStep({
@@ -67,7 +127,7 @@ function GramsStep({
   const confirm = async () => {
     await db.foods.put(food);
     await db.diaryEntries.add({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayStr(),
       mealType,
       foodId: food.id,
       foodName: food.name,
@@ -206,21 +266,43 @@ function CustomFoodForm({ onCreated }: { onCreated: (food: FoodItem) => void }) 
   );
 }
 
+type PickerTab = 'ara' | 'son' | 'sik';
+const TABS: { key: PickerTab; label: string }[] = [
+  { key: 'ara', label: '🔍 Ara' },
+  { key: 'son', label: '🕐 Son Eklenenler' },
+  { key: 'sik', label: '⭐ Sık Yenenler' },
+];
+
 export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const back = useNav((s) => s.back);
+  const [tab, setTab] = useState<PickerTab>('ara');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<OFFProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState<Selection | null>(null);
+  const [opened, setOpened] = useState<{ food: FoodItem; grams?: number } | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [selection, setSelection] = useState<Map<string, FoodRow>>(new Map());
+  const [showAllSameMeal, setShowAllSameMeal] = useState(false);
 
+  const profile = useLiveQuery(() => db.profile.get(1), []);
   const myFoods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
   const diaryEntries = useLiveQuery(() => db.diaryEntries.toArray(), []) ?? [];
+
+  const calorieTarget = useMemo(() => {
+    if (!profile) return null;
+    const bmr = calcBMR(profile.sex, profile.weightKg, profile.heightCm, profile.age);
+    const tdee = calcTDEE(bmr, profile.activityLevel);
+    return calcCalorieTarget(tdee, profile.goal, profile.goalRateKgPerWeek);
+  }, [profile]);
+  const tgdFor = (calories: number) => (calorieTarget ? Math.round((calories / calorieTarget) * 100) : null);
+
   const frequent = useMemo(() => computeFrequentFoods(diaryEntries), [diaryEntries]);
+  const recentAll = useMemo(() => computeRecentFoods(diaryEntries), [diaryEntries]);
+  const recentSameMeal = useMemo(() => recentAll.filter((r) => r.lastMealType === mealType), [recentAll, mealType]);
+  const recentOther = useMemo(() => recentAll.filter((r) => r.lastMealType !== mealType), [recentAll, mealType]);
 
   const q = query.trim();
-
   const localMatches = useMemo(
     () => (q.length >= 2 ? fuzzyFilterSort(q, dedupeFoodsByName(myFoods), (f) => f.name, 0.3).slice(0, 8) : []),
     [q, myFoods],
@@ -248,111 +330,231 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
     return () => clearTimeout(id);
   }, [q]);
 
-  if (selected) {
+  const toggleSelect = (row: FoodRow) => {
+    setSelection((prev) => {
+      const next = new Map(prev);
+      if (next.has(row.key)) next.delete(row.key);
+      else next.set(row.key, row);
+      return next;
+    });
+  };
+
+  const confirmBulk = async () => {
+    const date = todayStr();
+    const loggedAt = new Date().toISOString();
+    for (const row of selection.values()) {
+      await db.foods.put(row.food);
+      const factor = row.grams / 100;
+      await db.diaryEntries.add({
+        date,
+        mealType,
+        foodId: row.food.id,
+        foodName: row.food.name,
+        grams: row.grams,
+        calories: row.calories,
+        proteinG: Math.round(row.food.proteinPer100g * factor * 10) / 10,
+        carbsG: Math.round(row.food.carbsPer100g * factor * 10) / 10,
+        fatG: Math.round(row.food.fatPer100g * factor * 10) / 10,
+        loggedAt,
+      });
+    }
+    back();
+  };
+
+  if (opened) {
     return (
       <GramsStep
-        food={selected.food}
+        food={opened.food}
         mealType={mealType}
-        initialGrams={selected.grams}
-        onBack={() => setSelected(null)}
+        initialGrams={opened.grams}
+        onBack={() => setOpened(null)}
         onDone={back}
       />
     );
   }
 
   const showEmptyState = q.length >= 2 && !loading && localMatches.length === 0 && rankedResults.length === 0 && !error;
+  const sameMealShown = showAllSameMeal ? recentSameMeal : recentSameMeal.slice(0, 4);
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-[#070a14]">
       <ScreenHeader title={`${MEAL_LABELS[mealType]} · Besin Ekle`} onBack={back} />
       <div className="px-4 pb-2">
-        <div className="relative">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Besin ara… (örn. yulaf ezmesi)"
-            autoFocus
-            className="w-full rounded-xl border border-white/10 bg-white/[0.04] py-2.5 pl-9 pr-3 text-sm"
-          />
+        <div className="grid grid-cols-3 gap-1.5">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`btn-tap rounded-xl border px-2 py-2 text-xs font-semibold ${
+                tab === t.key
+                  ? 'border-emerald-400/50 bg-gradient-to-br from-emerald-400/15 to-emerald-500/5'
+                  : 'border-white/[0.06] bg-white/[0.02] text-slate-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+        {tab === 'ara' && (
+          <div className="relative mt-2">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Besin ara… (örn. yulaf ezmesi)"
+              autoFocus
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] py-2.5 pl-9 pr-3 text-sm"
+            />
+          </div>
+        )}
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-        <Card className="flex items-center justify-between py-2.5" onClick={() => setScanning(true)}>
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📷</span>
-            <div className="text-sm font-semibold">Fotoğraftan Ekle (AI)</div>
-          </div>
-          <span className="text-slate-500">›</span>
-        </Card>
+      <div
+        className="flex-1 space-y-3 overflow-y-auto px-4"
+        style={{ paddingBottom: selection.size > 0 ? 88 : 16 }}
+      >
+        {tab === 'ara' && (
+          <>
+            <Card className="flex items-center justify-between py-2.5" onClick={() => setScanning(true)}>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📷</span>
+                <div className="text-sm font-semibold">Fotoğraftan Ekle (AI)</div>
+              </div>
+              <span className="text-slate-500">›</span>
+            </Card>
 
-        {q.length < 2 && frequent.length > 0 && (
-          <div className="space-y-2">
-            <div className="px-1 text-sm font-semibold text-slate-400">⭐ Sık Yediklerin</div>
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-              {frequent.map((f) => (
-                <button
-                  key={f.name}
-                  onClick={() => setSelected({ food: frequentToFoodItem(f), grams: f.lastGrams })}
-                  className="btn-tap flex shrink-0 flex-col items-start gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-left"
-                  style={{ minWidth: 128, maxWidth: 168 }}
-                >
-                  <span className="w-full truncate text-sm font-semibold">{f.name}</span>
-                  <span className="text-xs text-slate-400">
-                    {f.caloriesPer100g} kcal/100g · ×{f.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+            {q.length >= 2 && localMatches.length > 0 && (
+              <div className="space-y-2">
+                <div className="px-1 text-sm font-semibold text-slate-400">🍽️ Senin Besinlerin</div>
+                {localMatches.map((f) => {
+                  const row = rowFromFoodItem(f);
+                  return (
+                    <FoodRowCard
+                      key={row.key}
+                      row={row}
+                      tgd={tgdFor(row.calories)}
+                      selected={selection.has(row.key)}
+                      onToggleSelect={() => toggleSelect(row)}
+                      onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {q.length >= 2 && (loading || rankedResults.length > 0) && (
+              <div className="space-y-2">
+                <div className="px-1 text-sm font-semibold text-slate-400">🌐 Besin Veritabanı</div>
+                {loading && <div className="py-2 text-center text-sm text-slate-400">Aranıyor…</div>}
+                {!loading &&
+                  rankedResults.map((p) => {
+                    const row = rowFromOff(p);
+                    return (
+                      <FoodRowCard
+                        key={row.key}
+                        row={row}
+                        tgd={tgdFor(row.calories)}
+                        selected={selection.has(row.key)}
+                        onToggleSelect={() => toggleSelect(row)}
+                        onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                      />
+                    );
+                  })}
+              </div>
+            )}
+
+            {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
+            {showEmptyState && <div className="py-2 text-center text-sm text-slate-400">Sonuç bulunamadı.</div>}
+
+            <CustomFoodForm onCreated={(food) => setOpened({ food })} />
+          </>
         )}
 
-        {q.length >= 2 && localMatches.length > 0 && (
-          <div className="space-y-2">
-            <div className="px-1 text-sm font-semibold text-slate-400">🍽️ Senin Besinlerin</div>
-            {localMatches.map((f) => (
-              <Card key={f.id} className="flex items-center justify-between py-2.5" onClick={() => setSelected({ food: f })}>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold">
-                    <span className="mr-1">{SOURCE_ICON[f.source]}</span>
-                    {f.name}
+        {tab === 'son' && (
+          <>
+            {recentAll.length === 0 ? (
+              <Card className="text-sm text-slate-400">Henüz kayıtlı besin geçmişin yok.</Card>
+            ) : (
+              <>
+                {recentSameMeal.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="px-1 text-sm font-semibold text-slate-400">☀️ {MEAL_LABELS[mealType].toUpperCase()}</div>
+                    {sameMealShown.map((f) => {
+                      const row = rowFromRecent(f);
+                      return (
+                        <FoodRowCard
+                          key={row.key}
+                          row={row}
+                          tgd={tgdFor(row.calories)}
+                          selected={selection.has(row.key)}
+                          onToggleSelect={() => toggleSelect(row)}
+                          onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                        />
+                      );
+                    })}
+                    {recentSameMeal.length > 4 && !showAllSameMeal && (
+                      <button
+                        onClick={() => setShowAllSameMeal(true)}
+                        className="w-full py-1 text-center text-sm font-semibold text-emerald-400"
+                      >
+                        Daha Fazla Göster ▾
+                      </button>
+                    )}
                   </div>
-                  <div className="truncate text-xs text-slate-400">
-                    {f.brand ? `${f.brand} · ` : ''}
-                    {f.caloriesPer100g} kcal / 100g
+                )}
+                {recentOther.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="px-1 text-sm font-semibold text-slate-400">🕐 TÜM DİĞER ÖĞÜNLER</div>
+                    {recentOther.map((f) => {
+                      const row = rowFromRecent(f);
+                      return (
+                        <FoodRowCard
+                          key={row.key}
+                          row={row}
+                          tgd={tgdFor(row.calories)}
+                          selected={selection.has(row.key)}
+                          onToggleSelect={() => toggleSelect(row)}
+                          onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                        />
+                      );
+                    })}
                   </div>
-                </div>
-                <span className="text-emerald-400">+</span>
-              </Card>
-            ))}
-          </div>
+                )}
+              </>
+            )}
+          </>
         )}
 
-        {q.length >= 2 && (loading || rankedResults.length > 0) && (
-          <div className="space-y-2">
-            <div className="px-1 text-sm font-semibold text-slate-400">🌐 Besin Veritabanı</div>
-            {loading && <div className="py-2 text-center text-sm text-slate-400">Aranıyor…</div>}
-            {!loading &&
-              rankedResults.map((p) => (
-                <Card key={p.id} className="flex items-center justify-between py-2.5" onClick={() => setSelected({ food: toFoodItem(p) })}>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold">{p.name}</div>
-                    <div className="truncate text-xs text-slate-400">
-                      {p.brand ? `${p.brand} · ` : ''}
-                      {p.caloriesPer100g} kcal / 100g
-                    </div>
-                  </div>
-                  <span className="text-emerald-400">+</span>
-                </Card>
-              ))}
-          </div>
+        {tab === 'sik' && (
+          <>
+            {frequent.length === 0 ? (
+              <Card className="text-sm text-slate-400">Sık yediğin besinler burada görünecek.</Card>
+            ) : (
+              frequent.map((f) => {
+                const row = rowFromFrequent(f);
+                return (
+                  <FoodRowCard
+                    key={row.key}
+                    row={row}
+                    tgd={tgdFor(row.calories)}
+                    selected={selection.has(row.key)}
+                    onToggleSelect={() => toggleSelect(row)}
+                    onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                  />
+                );
+              })
+            )}
+          </>
         )}
-
-        {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
-        {showEmptyState && <div className="py-2 text-center text-sm text-slate-400">Sonuç bulunamadı.</div>}
-
-        <CustomFoodForm onCreated={(food) => setSelected({ food })} />
       </div>
+
+      {selection.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-[#070a14]/95 px-4 py-3 backdrop-blur-xl">
+          <Button className="w-full" onClick={confirmBulk}>
+            {selection.size} seçili · {MEAL_LABELS[mealType]} Öğününe Ekle
+          </Button>
+        </div>
+      )}
+
       {scanning && <PhotoFoodScan mealType={mealType} onClose={() => setScanning(false)} onDone={back} />}
     </div>
   );
