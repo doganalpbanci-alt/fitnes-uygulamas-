@@ -1,8 +1,19 @@
 import { useRef, useState } from 'react';
 import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
-import { analyzeFoodPhoto, getOpenAiKey, type AiFoodResult } from '../lib/openaiVision';
+import {
+  analyzeFoodPhoto,
+  getOpenAiKey,
+  sendCorrection,
+  type AiFoodResult,
+  type ChatMessage,
+} from '../lib/openaiVision';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
+
+interface ChatLogEntry {
+  role: 'user' | 'assistant';
+  text: string;
+}
 
 export default function PhotoFoodScan({
   mealType,
@@ -14,16 +25,23 @@ export default function PhotoFoodScan({
   onDone: () => void;
 }) {
   const setTab = useNav((s) => s.setTab);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [hasKey] = useState(() => !!getOpenAiKey());
   const [photo, setPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AiFoodResult | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[] | null>(null);
+  const [chatLog, setChatLog] = useState<ChatLogEntry[]>([]);
+  const [correction, setCorrection] = useState('');
+  const [correcting, setCorrecting] = useState(false);
 
   const onFile = (file: File) => {
     setError('');
     setResult(null);
+    setMessages(null);
+    setChatLog([]);
     const reader = new FileReader();
     reader.onload = () => setPhoto(reader.result as string);
     reader.readAsDataURL(file);
@@ -34,7 +52,10 @@ export default function PhotoFoodScan({
     setLoading(true);
     setError('');
     try {
-      setResult(await analyzeFoodPhoto(photo));
+      const { turn, messages: msgs } = await analyzeFoodPhoto(photo);
+      setResult(turn.result);
+      setMessages(msgs);
+      setChatLog([{ role: 'assistant', text: turn.reply }]);
     } catch (err) {
       setError(
         err instanceof Error && err.message === 'unauthorized'
@@ -43,6 +64,29 @@ export default function PhotoFoodScan({
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendCorrectionMsg = async () => {
+    const text = correction.trim();
+    if (!text || !messages) return;
+    setCorrecting(true);
+    setError('');
+    setChatLog((log) => [...log, { role: 'user', text }]);
+    setCorrection('');
+    try {
+      const { turn, messages: msgs } = await sendCorrection(messages, text);
+      setResult(turn.result);
+      setMessages(msgs);
+      setChatLog((log) => [...log, { role: 'assistant', text: turn.reply }]);
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message === 'unauthorized'
+          ? "API anahtarı geçersiz görünüyor — Ayarlar'dan kontrol et."
+          : 'Düzeltme gönderilemedi. İnternet bağlantını kontrol edip tekrar dene.',
+      );
+    } finally {
+      setCorrecting(false);
     }
   };
 
@@ -108,14 +152,24 @@ export default function PhotoFoodScan({
           <Card className="space-y-3 text-center">
             <div className="text-3xl">📷</div>
             <div className="text-sm text-slate-400">Yemeğinin fotoğrafını çek ya da galeriden seç.</div>
-            <Button className="w-full" onClick={() => fileRef.current?.click()}>
-              Fotoğraf Seç
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={() => cameraRef.current?.click()}>Fotoğraf Çek</Button>
+              <Button variant="secondary" onClick={() => galleryRef.current?.click()}>
+                Galeriden Seç
+              </Button>
+            </div>
             <input
-              ref={fileRef}
+              ref={cameraRef}
               type="file"
               accept="image/*"
               capture="environment"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+            />
+            <input
+              ref={galleryRef}
+              type="file"
+              accept="image/*"
               className="hidden"
               onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
             />
@@ -150,7 +204,7 @@ export default function PhotoFoodScan({
         {result && (
           <>
             <Card className="space-y-1 text-center">
-              <div className="text-xs text-slate-400">AI tahmini — gerekirse düzelt</div>
+              <div className="text-xs text-slate-400">AI tahmini — gerekirse aşağıdan düzelt</div>
               <input
                 value={result.name}
                 onChange={(e) => setResult({ ...result, name: e.target.value })}
@@ -216,6 +270,38 @@ export default function PhotoFoodScan({
                 <div className="text-[10px] text-slate-400">Yağ</div>
               </label>
             </Card>
+
+            <Card className="space-y-2">
+              <div className="text-sm font-semibold text-slate-300">🤖 AI ile Doğrula / Düzelt</div>
+              <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                {chatLog.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[85%] rounded-xl px-3 py-1.5 text-sm ${
+                        m.role === 'user' ? 'bg-emerald-400/15 text-emerald-100' : 'bg-white/[0.05] text-slate-300'
+                      }`}
+                    >
+                      {m.text}
+                    </div>
+                  </div>
+                ))}
+                {correcting && <div className="text-center text-xs text-slate-500">Yanıtlıyor…</div>}
+              </div>
+              {error && chatLog.length > 0 && <div className="text-center text-sm text-rose-400">{error}</div>}
+              <div className="flex gap-2">
+                <input
+                  value={correction}
+                  onChange={(e) => setCorrection(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !correcting && sendCorrectionMsg()}
+                  placeholder="örn. 'bu tavuk değil somon' ya da 'porsiyon 500 gram'"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
+                />
+                <Button variant="secondary" disabled={correcting || !correction.trim()} onClick={sendCorrectionMsg}>
+                  Gönder
+                </Button>
+              </div>
+            </Card>
+
             <Button className="w-full" onClick={confirm}>
               {MEAL_LABELS[mealType]} Öğününe Ekle
             </Button>
