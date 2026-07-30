@@ -10,6 +10,7 @@ export default function Settings() {
   const [msg, setMsg] = useState('');
   const [hasAiKey, setHasAiKey] = useState(() => !!getOpenAiKey());
   const [aiKeyInput, setAiKeyInput] = useState('');
+  const [howToOpen, setHowToOpen] = useState(false);
 
   const exportData = async () => {
     const data = {
@@ -159,12 +160,29 @@ export default function Settings() {
         <Card className="space-y-2">
           <div className="font-semibold">Yedekleme ve Cihazlar Arası Taşıma</div>
           <div className="text-sm text-slate-400">
-            Veriler yalnızca bu cihazda tutulur, sunucuya gitmez. Bilgisayarda kaydettiğin antrenmanları
-            telefonuna taşımak için: <b>Dışa Aktar</b>'a bas, açılan paylaşım menüsünden AirDrop / e-posta /
-            mesaj ile telefonuna gönder, telefonda dosyayı açıp <b>İçe Aktar</b>'a bas. Paylaşım menüsü
-            açılmazsa dosya inecek — onu telefonuna başka bir yoldan (AirDrop, e-posta, bulut) ulaştırman
-            yeterli.
+            Veriler yalnızca bu cihazda tutulur, sunucuya gitmez. Düzenli olarak yedek almanı öneririz.
           </div>
+          <button
+            onClick={() => setHowToOpen((v) => !v)}
+            className="btn-tap -mx-1 flex w-full items-center justify-between px-1 py-1 text-left text-sm font-semibold text-emerald-400"
+          >
+            <span>Başka cihaza nasıl taşırım?</span>
+            <span className="text-slate-500">{howToOpen ? '▾' : '▸'}</span>
+          </button>
+          {howToOpen && (
+            <ol className="list-inside list-decimal space-y-1 text-sm text-slate-400">
+              <li>
+                Bu cihazda <b>Dışa Aktar</b>'a bas.
+              </li>
+              <li>Açılan paylaşım menüsünden AirDrop / e-posta / mesaj ile diğer cihaza gönder.</li>
+              <li>
+                Diğer cihazda dosyayı açıp <b>İçe Aktar</b>'a bas.
+              </li>
+              <li className="text-slate-500">
+                Paylaşım menüsü açılmazsa dosya iner — onu istediğin yolla (bulut, e-posta) ulaştırman yeterli.
+              </li>
+            </ol>
+          )}
           <div className="flex gap-2">
             <Button variant="secondary" className="flex-1" onClick={exportData}>
               Dışa Aktar (JSON)
@@ -185,18 +203,16 @@ export default function Settings() {
         <Card className="space-y-2">
           <div className="font-semibold">📷 Fotoğraftan Besin Tanıma (AI)</div>
           <div className="text-sm text-slate-400">
-            Yemek fotoğrafını analiz edip besin değerlerini tahmin etmek için kendi OpenAI API anahtarını
-            gir. Anahtar yalnızca bu cihazda (tarayıcı belleğinde) saklanır, hiçbir sunucuya gönderilmez ve
-            JSON yedeklerine dahil edilmez. Her analiz kendi OpenAI hesabından ücretlendirilir.{' '}
+            Kendi OpenAI API anahtarınla çalışır. Anahtar yalnızca bu cihazda saklanır, yedeklere dahil
+            edilmez. Analizler kendi OpenAI hesabından ücretlendirilir.{' '}
             <a
-              className="underline"
+              className="text-emerald-400 underline"
               href="https://platform.openai.com/api-keys"
               target="_blank"
               rel="noopener noreferrer"
             >
-              Anahtar almak için tıkla
+              Anahtar al
             </a>
-            .
           </div>
           {hasAiKey ? (
             <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2.5">
@@ -221,18 +237,30 @@ export default function Settings() {
           )}
         </Card>
 
-        <Card className="space-y-2">
+        <Card className="space-y-3">
           <div className="font-semibold text-rose-400">Tehlikeli bölge</div>
-          <div className="text-sm text-slate-400">
-            İlerleme verilerini sıfırlamak yalnızca antrenman geçmişini (istatistik, rekor, ısı haritası) siler;
-            şablonların ve programın kalır.
+          <div className="space-y-1.5">
+            <Button
+              variant="secondary"
+              className="w-full !border-rose-400/25 !text-rose-300"
+              onClick={resetProgress}
+            >
+              İlerleme Verilerini Sıfırla
+            </Button>
+            <div className="px-1 text-xs text-slate-500">
+              Yalnızca antrenman geçmişini siler (istatistik, rekor, ısı haritası). Şablonların ve haftalık
+              programın kalır.
+            </div>
           </div>
-          <Button variant="danger" className="w-full" onClick={resetProgress}>
-            İlerleme Verilerini Sıfırla
-          </Button>
-          <Button variant="danger" className="w-full" onClick={wipe}>
-            Tüm Verileri Sil
-          </Button>
+          <div className="space-y-1.5">
+            <Button variant="danger" className="w-full" onClick={wipe}>
+              Tüm Verileri Sil
+            </Button>
+            <div className="px-1 text-xs text-slate-500">
+              Her şeyi siler: öğün kayıtları, kilo geçmişi, antrenmanlar ve oruçlar. Geri alınamaz — önce yedek
+              al.
+            </div>
+          </div>
         </Card>
 
         {msg && <div className="px-1 text-sm text-slate-300">{msg}</div>}

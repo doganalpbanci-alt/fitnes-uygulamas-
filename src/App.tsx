@@ -1,4 +1,5 @@
 import { useNav, type Tab } from './store';
+import { useAppUpdate } from './lib/appUpdate';
 import Home from './screens/Home';
 import Fasting from './screens/Fasting';
 import Nutrition from './screens/Nutrition';
@@ -21,7 +22,30 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'settings', label: 'Ayarlar', icon: '⚙️' },
 ];
 
+function UpdateBanner() {
+  const { updateReady, reload } = useAppUpdate();
+  if (!updateReady) return null;
+  return (
+    <button
+      onClick={reload}
+      className="btn-tap flex w-full items-center justify-center gap-2 border-b border-emerald-300/30 bg-gradient-to-b from-emerald-400 to-emerald-500 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+8px)] text-sm font-semibold text-slate-950"
+    >
+      <span>✨ Yeni sürüm hazır</span>
+      <span className="rounded-full bg-slate-950/15 px-2 py-0.5 text-xs">Yenile</span>
+    </button>
+  );
+}
+
 export default function App() {
+  return (
+    <>
+      <UpdateBanner />
+      <AppContent />
+    </>
+  );
+}
+
+function AppContent() {
   const { tab, view, setTab } = useNav();
 
   if (view.t === 'editTemplate') return <TemplateEditor id={view.id} />;
