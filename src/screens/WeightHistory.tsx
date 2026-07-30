@@ -15,6 +15,7 @@ export default function WeightHistory() {
   const profile = useLiveQuery(() => db.profile.get(1), []);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [shownCount, setShownCount] = useState(10);
   const [weight, setWeight] = useState('');
   const [date, setDate] = useState(() => todayStr());
 
@@ -39,10 +40,6 @@ export default function WeightHistory() {
 
   const weeklyBuckets = useMemo(() => computeWeightWeeklyBuckets(entries), [entries]);
   const weeklyChange = useMemo(() => computeWeightWeeklyChange(weeklyBuckets), [weeklyBuckets]);
-  const weeklyChartPoints = useMemo(
-    () => weeklyBuckets.slice(-8).map((b) => ({ x: b.weekStart, y: b.avgWeightKg })),
-    [weeklyBuckets],
-  );
 
   const deltaColor = (delta: number) => {
     const goal = profile?.goal ?? 'maintain';
@@ -114,7 +111,6 @@ export default function WeightHistory() {
                 {weeklyChange.bodyFatDeltaPct} (geçen haftaya göre)
               </div>
             )}
-            {weeklyChartPoints.length > 1 && <LineChart points={weeklyChartPoints} unit="kg" />}
           </Card>
         )}
 
@@ -164,27 +160,42 @@ export default function WeightHistory() {
             Henüz kilo kaydın yok. Elle ekleyebilir ya da akıllı tartından CSV içe aktarabilirsin.
           </Card>
         ) : (
-          <div className="space-y-2">
-            {sorted.slice(0, 40).map((e) => (
-              <Card key={e.id} className="flex items-center justify-between py-2.5">
-                <div>
-                  <div className="font-semibold">{e.weightKg} kg</div>
-                  <div className="text-xs text-slate-400">
+          <Card className="!p-0">
+            <div className="flex items-center justify-between px-4 pb-1 pt-3">
+              <div className="text-sm font-semibold text-slate-300">Tüm Kayıtlar</div>
+              <div className="text-xs text-slate-500">{sorted.length} ölçüm</div>
+            </div>
+            {sorted.slice(0, shownCount).map((e, i) => (
+              <div
+                key={e.id}
+                className={`flex items-center justify-between gap-2 px-4 py-2 ${i > 0 ? 'border-t border-white/[0.05]' : ''}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-semibold tabular-nums">{e.weightKg} kg</span>
+                  <span className="ml-2 text-xs text-slate-400">
                     {fmtDate(e.date)}
                     {e.bodyFatPct != null ? ` · Yağ %${e.bodyFatPct}` : ''}
                     {e.source === 'eufy' ? ' · Eufy' : ''}
-                  </div>
+                  </span>
                 </div>
                 <button
                   onClick={() => removeEntry(e.id)}
-                  className="rounded-lg p-2 text-slate-500 active:bg-white/10"
+                  className="btn-tap -mr-1 shrink-0 rounded-lg p-1.5 text-slate-600 active:bg-white/10"
                   aria-label="Kaydı sil"
                 >
                   🗑️
                 </button>
-              </Card>
+              </div>
             ))}
-          </div>
+            {sorted.length > shownCount && (
+              <button
+                onClick={() => setShownCount((c) => c + 20)}
+                className="btn-tap w-full border-t border-white/[0.05] py-2.5 text-sm font-semibold text-emerald-400"
+              >
+                Daha Fazla Göster ({sorted.length - shownCount}) ▾
+              </button>
+            )}
+          </Card>
         )}
       </div>
       {importing && <EufyImport onClose={() => setImporting(false)} />}

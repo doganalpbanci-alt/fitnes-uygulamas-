@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type MealType } from '../db';
 import { calcBMR, calcTDEE, calcCalorieTarget, calcMacroTargets } from '../lib/nutrition';
@@ -14,7 +14,10 @@ function WeeklyCalorieBars({ days, target }: { days: DayNutritionSummary[]; targ
   return (
     <div>
       <div className="relative" style={{ height: h }}>
-        <div className="absolute inset-x-0 border-t border-dashed border-white/20" style={{ bottom: (target / maxVal) * h }} />
+        <div className="absolute inset-x-0 flex items-center" style={{ bottom: (target / maxVal) * h }}>
+          <div className="flex-1 border-t border-dashed border-amber-300/40" />
+          <span className="ml-1 shrink-0 text-[9px] font-semibold text-amber-300/70">hedef</span>
+        </div>
         <div className="absolute inset-0 flex items-end gap-1.5">
           {days.map((d) => {
             const barH = d.calories === 0 ? 2 : Math.max(4, (d.calories / maxVal) * h);
@@ -37,9 +40,11 @@ function WeeklyCalorieBars({ days, target }: { days: DayNutritionSummary[]; targ
         </div>
       </div>
       <div className="mt-1 flex gap-1.5">
-        {days.map((d) => (
-          <div key={d.date} className="flex-1 text-center text-[10px] text-slate-500">
-            {new Date(d.date + 'T00:00:00').toLocaleDateString('tr-TR', { weekday: 'short' })}
+        {days.map((d, i) => (
+          <div key={d.date} className={`flex-1 text-center text-[10px] ${i === days.length - 1 ? 'font-semibold text-slate-300' : 'text-slate-500'}`}>
+            {i === days.length - 1
+              ? 'Bugün'
+              : new Date(d.date + 'T00:00:00').toLocaleDateString('tr-TR', { weekday: 'short' })}
           </div>
         ))}
       </div>
@@ -57,7 +62,7 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
   const remaining = target - consumed;
 
   return (
-    <div className="relative mx-auto h-48 w-48">
+    <div className="relative mx-auto h-40 w-40">
       <svg viewBox="0 0 200 200" className="h-full w-full -rotate-90">
         <defs>
           <linearGradient id="calRing" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -109,6 +114,7 @@ function MacroBar({ label, consumed, target, color }: { label: string; consumed:
 
 export default function Nutrition() {
   const push = useNav((s) => s.push);
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
   const profile = useLiveQuery(() => db.profile.get(1), []);
   const today = todayStr();
   const entries = useLiveQuery(() => db.diaryEntries.where('date').equals(today).toArray(), [today]) ?? [];
@@ -179,6 +185,85 @@ export default function Nutrition() {
         }
       />
       <div className="space-y-3 px-4">
+        <Card>
+          <CalorieRing consumed={totals.calories} target={targets.calorieTarget} />
+          <div className="mt-3 space-y-2.5">
+            <MacroBar label="Protein" consumed={totals.proteinG} target={targets.proteinG} color="bg-gradient-to-r from-sky-400 to-blue-500" />
+            <MacroBar label="Karbonhidrat" consumed={totals.carbsG} target={targets.carbsG} color="bg-gradient-to-r from-amber-400 to-orange-500" />
+            <MacroBar label="Yağ" consumed={totals.fatG} target={targets.fatG} color="bg-gradient-to-r from-fuchsia-400 to-pink-500" />
+          </div>
+        </Card>
+
+        <Card className="!p-0">
+          {MEALS.map((meal, i) => {
+            const mealEntries = entries.filter((e) => e.mealType === meal);
+            const mealCal = mealEntries.reduce((a, e) => a + e.calories, 0);
+            return (
+              <div key={meal} className={i > 0 ? 'border-t border-white/[0.06]' : ''}>
+                <div className="flex items-center justify-between px-4 pb-1.5 pt-3">
+                  <div className="text-sm font-bold">{MEAL_LABELS[meal]}</div>
+                  {mealCal > 0 && <div className="text-xs tabular-nums text-slate-400">{mealCal} kcal</div>}
+                </div>
+                {mealEntries.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between gap-2 px-4 py-1">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm">{e.foodName}</div>
+                      <div className="text-xs tabular-nums text-slate-500">
+                        {e.grams}g · {e.calories} kcal
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeEntry(e.id)}
+                      className="btn-tap -mr-1 rounded-lg p-2 text-slate-600 active:bg-white/10"
+                      aria-label="Kaydı sil"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => push({ t: 'foodPicker', mealType: meal })}
+                  className="btn-tap w-full px-4 pb-3 pt-1.5 text-left text-sm font-semibold text-emerald-400"
+                >
+                  + Besin ekle
+                </button>
+              </div>
+            );
+          })}
+        </Card>
+
+        <Card className="space-y-3">
+          <button className="flex w-full items-center justify-between" onClick={() => setWeeklyOpen((v) => !v)}>
+            <div className="font-semibold">Haftalık Özet</div>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              {weekly.daysLogged > 0 && <span className="tabular-nums">Ort. {weekly.avgCalories} kcal</span>}
+              <span>{weekly.daysLogged}/7 gün</span>
+              <span className="text-slate-500">{weeklyOpen ? '▾' : '▸'}</span>
+            </div>
+          </button>
+          {weeklyOpen &&
+            (weekly.daysLogged === 0 ? (
+              <div className="text-sm text-slate-400">Bu hafta henüz kayıt yok.</div>
+            ) : (
+              <>
+                <WeeklyCalorieBars days={weekly.days} target={targets.calorieTarget} />
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <div className="text-xs text-slate-400">Ort. kalori (kayıtlı günler)</div>
+                    <div className="font-bold tabular-nums">{weekly.avgCalories} kcal</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">Hedefe göre</div>
+                    <div className={`font-bold tabular-nums ${weekly.avgCalories > targets.calorieTarget ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {weekly.avgCalories > targets.calorieTarget ? '+' : ''}
+                      {weekly.avgCalories - targets.calorieTarget} kcal
+                    </div>
+                  </div>
+                </div>
+              </>
+            ))}
+        </Card>
+
         <Card className="flex items-center justify-between py-3" onClick={() => push({ t: 'weightHistory' })}>
           <div className="flex items-center gap-2">
             <span className="text-xl">⚖️</span>
@@ -189,82 +274,6 @@ export default function Nutrition() {
           </div>
           <span className="text-slate-500">›</span>
         </Card>
-
-        <Card>
-          <CalorieRing consumed={totals.calories} target={targets.calorieTarget} />
-          <div className="mt-3 space-y-2.5">
-            <MacroBar label="Protein" consumed={totals.proteinG} target={targets.proteinG} color="bg-gradient-to-r from-sky-400 to-blue-500" />
-            <MacroBar label="Karbonhidrat" consumed={totals.carbsG} target={targets.carbsG} color="bg-gradient-to-r from-amber-400 to-orange-500" />
-            <MacroBar label="Yağ" consumed={totals.fatG} target={targets.fatG} color="bg-gradient-to-r from-fuchsia-400 to-pink-500" />
-          </div>
-        </Card>
-
-        <Card className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="font-semibold">Haftalık Özet</div>
-            <div className="text-xs text-slate-400">{weekly.daysLogged}/7 gün kayıt</div>
-          </div>
-          {weekly.daysLogged === 0 ? (
-            <div className="text-sm text-slate-400">Bu hafta henüz kayıt yok.</div>
-          ) : (
-            <>
-              <WeeklyCalorieBars days={weekly.days} target={targets.calorieTarget} />
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <div className="text-xs text-slate-400">Ort. kalori (kayıtlı günler)</div>
-                  <div className="font-bold">{weekly.avgCalories} kcal</div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-400">Hedefe göre</div>
-                  <div className={`font-bold ${weekly.avgCalories > targets.calorieTarget ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {weekly.avgCalories > targets.calorieTarget ? '+' : ''}
-                    {weekly.avgCalories - targets.calorieTarget} kcal
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </Card>
-
-        {MEALS.map((meal) => {
-          const mealEntries = entries.filter((e) => e.mealType === meal);
-          const mealCal = mealEntries.reduce((a, e) => a + e.calories, 0);
-          return (
-            <Card key={meal} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold">{MEAL_LABELS[meal]}</div>
-                <div className="text-xs text-slate-400">{mealCal} kcal</div>
-              </div>
-              {mealEntries.length > 0 && (
-                <div className="space-y-1.5">
-                  {mealEntries.map((e) => (
-                    <div key={e.id} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-2.5 py-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{e.foodName}</div>
-                        <div className="text-xs text-slate-500">
-                          {e.grams}g · {e.calories} kcal
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeEntry(e.id)}
-                        className="rounded-lg p-1.5 text-slate-500 active:bg-white/10"
-                        aria-label="Kaydı sil"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button
-                onClick={() => push({ t: 'foodPicker', mealType: meal })}
-                className="btn-tap w-full rounded-lg border border-dashed border-white/15 py-2 text-sm font-semibold text-emerald-400"
-              >
-                + Ekle
-              </button>
-            </Card>
-          );
-        })}
       </div>
     </div>
   );
