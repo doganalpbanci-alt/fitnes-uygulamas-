@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { checkOverload } from '../lib/overload';
@@ -167,6 +167,7 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: string }) {
 export default function Progress() {
   const push = useNav((s) => s.push);
   const setTab = useNav((s) => s.setTab);
+  const [shownSessions, setShownSessions] = useState(10);
   const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? [];
   const sessions = useLiveQuery(() => db.sessions.orderBy('date').reverse().toArray(), []) ?? [];
 
@@ -298,27 +299,37 @@ export default function Progress() {
           {finishedSessions.length === 0 ? (
             <Card className="text-sm text-slate-400">Henüz tamamlanmış antrenman yok.</Card>
           ) : (
-            <div className="space-y-2">
-              {finishedSessions.slice(0, 30).map((s) => {
+            <Card className="!p-0">
+              {finishedSessions.slice(0, shownSessions).map((s, i) => {
                 const stats = summarizeSession(s, exercises);
                 return (
-                  <Card
+                  <button
                     key={s.id}
-                    className="flex items-center justify-between py-2.5"
+                    className={`btn-tap flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left ${
+                      i > 0 ? 'border-t border-white/[0.05]' : ''
+                    }`}
                     onClick={() => push({ t: 'sessionSummary', sessionId: s.id! })}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold">{s.templateName}</div>
+                      <div className="truncate text-sm font-semibold">{s.templateName}</div>
                       <div className="text-xs text-slate-400">
                         {fmtDate(s.date)} · {stats.durationMin} dk · {stats.totalSets} set ·{' '}
                         {Math.round(stats.totalVolumeKg)} kg hacim
                       </div>
                     </div>
-                    <span className="text-slate-500">›</span>
-                  </Card>
+                    <span className="shrink-0 text-slate-500">›</span>
+                  </button>
                 );
               })}
-            </div>
+              {finishedSessions.length > shownSessions && (
+                <button
+                  onClick={() => setShownSessions((c) => c + 20)}
+                  className="btn-tap w-full border-t border-white/[0.05] py-2.5 text-sm font-semibold text-emerald-400"
+                >
+                  Daha Fazla Göster ({finishedSessions.length - shownSessions}) ▾
+                </button>
+              )}
+            </Card>
           )}
         </div>
       </div>

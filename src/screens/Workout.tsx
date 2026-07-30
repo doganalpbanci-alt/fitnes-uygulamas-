@@ -33,8 +33,8 @@ export default function Workout() {
       <div className="space-y-4 px-4">
         <div>
           <div className="mb-2 px-1 text-sm font-semibold text-slate-400">Haftalık Program</div>
-          <div className="space-y-2">
-            {schedule.map((day) => {
+          <Card className="!p-0">
+            {schedule.map((day, i) => {
               const doneToday = weekSessions.some(
                 (s) =>
                   s.finishedAt &&
@@ -43,20 +43,22 @@ export default function Workout() {
               );
               const isToday = day.dayOfWeek === today;
               return (
-                <Card
+                <div
                   key={day.dayOfWeek}
-                  className={`flex items-center gap-3 py-3 ${isToday ? 'border-emerald-500/50' : ''}`}
+                  className={`flex items-center gap-2 px-3 py-2 ${i > 0 ? 'border-t border-white/[0.06]' : ''} ${
+                    isToday ? 'bg-emerald-400/[0.06]' : ''
+                  }`}
                 >
-                  <div className="w-24">
-                    <div className={`font-semibold ${isToday ? 'text-emerald-400' : ''}`}>
+                  <div className="w-[86px] shrink-0">
+                    <div className={`text-sm font-semibold ${isToday ? 'text-emerald-400' : ''}`}>
                       {DAY_NAMES[day.dayOfWeek]}
                     </div>
-                    {isToday && <div className="text-xs text-emerald-500">Bugün</div>}
+                    {isToday && <div className="text-[10px] leading-tight text-emerald-500">Bugün</div>}
                   </div>
                   <select
                     value={day.templateId ?? ''}
                     onChange={(e) => setDay(day.dayOfWeek, e.target.value ? Number(e.target.value) : null)}
-                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
+                    className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-sm"
                   >
                     <option value="">— Dinlenme —</option>
                     {templates.map((t) => (
@@ -65,16 +67,16 @@ export default function Workout() {
                       </option>
                     ))}
                   </select>
-                  {doneToday && <span className="text-emerald-400">✓</span>}
+                  {doneToday && <span className="shrink-0 text-emerald-400">✓</span>}
                   {isToday && day.templateId != null && !doneToday && (
-                    <Button className="!px-3 !py-2" onClick={() => push({ t: 'session', templateId: day.templateId! })}>
+                    <Button className="shrink-0 !px-2.5 !py-1.5 !text-xs" onClick={() => push({ t: 'session', templateId: day.templateId! })}>
                       Başlat
                     </Button>
                   )}
-                </Card>
+                </div>
               );
             })}
-          </div>
+          </Card>
         </div>
 
         <div>
