@@ -406,6 +406,7 @@ function StartFastSection({ lastEnded }: { lastEnded?: Fast }) {
 
 export default function Fasting() {
   const now = useNow();
+  const [shownPast, setShownPast] = useState(10);
   const fasts = useLiveQuery(() => db.fasts.orderBy('startedAt').reverse().toArray(), []) ?? [];
   const active = fasts.find((f) => !f.endedAt);
   const past = fasts
@@ -456,32 +457,43 @@ export default function Fasting() {
         {past.length > 0 && (
           <div>
             <div className="mb-2 px-1 text-sm font-semibold text-slate-400">Geçmiş</div>
-            <div className="space-y-2">
-              {past.slice(0, 30).map((f) => {
+            <Card className="!p-0">
+              {past.slice(0, shownPast).map((f, i) => {
                 const dur = new Date(f.endedAt!).getTime() - new Date(f.startedAt).getTime();
                 return (
-                  <Card key={f.id} className="flex items-center gap-2 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold">{f.protocol}</div>
-                      <div className="text-xs text-slate-400">
-                        {new Date(f.startedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} ·{' '}
-                        {fmtClock(f.startedAt)}–{fmtClock(f.endedAt!)} · {fmtDuration(dur)} / hedef {f.targetHours}s
-                      </div>
-                    </div>
-                    <div className={`text-sm ${f.completed ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <div
+                    key={f.id}
+                    className={`flex items-center gap-2 px-4 py-2 ${i > 0 ? 'border-t border-white/[0.05]' : ''}`}
+                  >
+                    <span className={`shrink-0 text-sm ${f.completed ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {f.completed ? '✓' : '✗'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold">{f.protocol}</span>
+                      <span className="ml-2 text-xs text-slate-400">
+                        {new Date(f.startedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} ·{' '}
+                        {fmtClock(f.startedAt)}–{fmtClock(f.endedAt!)} · {fmtDuration(dur)}
+                      </span>
                     </div>
                     <button
                       onClick={() => removeFast(f)}
-                      className="rounded-lg p-2 text-slate-500 active:bg-white/10"
+                      className="btn-tap -mr-1 shrink-0 rounded-lg p-1.5 text-slate-600 active:bg-white/10"
                       aria-label="Kaydı sil"
                     >
                       🗑️
                     </button>
-                  </Card>
+                  </div>
                 );
               })}
-            </div>
+              {past.length > shownPast && (
+                <button
+                  onClick={() => setShownPast((c) => c + 20)}
+                  className="btn-tap w-full border-t border-white/[0.05] py-2.5 text-sm font-semibold text-emerald-400"
+                >
+                  Daha Fazla Göster ({past.length - shownPast}) ▾
+                </button>
+              )}
+            </Card>
           </div>
         )}
       </div>

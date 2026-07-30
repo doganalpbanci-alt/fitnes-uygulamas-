@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, MEAL_LABELS, todayStr, type MealType } from '../db';
+import { db, MEAL_LABELS, todayStr, type DiaryEntry, type MealType } from '../db';
 import { calcBMR, calcTDEE, calcCalorieTarget, calcMacroTargets } from '../lib/nutrition';
+import { per100Of, scaleTo, updateEntryGrams } from '../lib/diary';
 import { computeNutritionWeeklyStats, type DayNutritionSummary } from '../lib/weeklyStats';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
@@ -115,7 +116,11 @@ function MacroBar({ label, consumed, target, color }: { label: string; consumed:
 export default function Nutrition() {
   const push = useNav((s) => s.push);
   const [weeklyOpen, setWeeklyOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editGrams, setEditGrams] = useState('');
   const profile = useLiveQuery(() => db.profile.get(1), []);
+  const foods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
+  const foodMap = useMemo(() => new Map(foods.map((f) => [f.id, f])), [foods]);
   const today = todayStr();
   const entries = useLiveQuery(() => db.diaryEntries.where('date').equals(today).toArray(), [today]) ?? [];
   const weekCutoff = useMemo(() => {
@@ -152,6 +157,18 @@ export default function Nutrition() {
   const removeEntry = async (id?: number) => {
     if (id == null) return;
     await db.diaryEntries.delete(id);
+  };
+
+  const startEdit = (e: DiaryEntry) => {
+    setEditingId(e.id ?? null);
+    setEditGrams(String(e.grams));
+  };
+
+  const saveEdit = async (e: DiaryEntry) => {
+    const g = Math.max(0, Number(editGrams) || 0);
+    if (!(g > 0)) return;
+    await updateEntryGrams(e, per100Of(e, foodMap.get(e.foodId)), g);
+    setEditingId(null);
   };
 
   if (!profile || !targets) {
@@ -204,23 +221,64 @@ export default function Nutrition() {
                   <div className="text-sm font-bold">{MEAL_LABELS[meal]}</div>
                   {mealCal > 0 && <div className="text-xs tabular-nums text-slate-400">{mealCal} kcal</div>}
                 </div>
-                {mealEntries.map((e) => (
-                  <div key={e.id} className="flex items-center justify-between gap-2 px-4 py-1">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm">{e.foodName}</div>
-                      <div className="text-xs tabular-nums text-slate-500">
-                        {e.grams}g · {e.calories} kcal
+                {mealEntries.map((e) => {
+                  if (editingId === e.id) {
+                    const g = Math.max(0, Number(editGrams) || 0);
+                    const preview = scaleTo(per100Of(e, foodMap.get(e.foodId)), g);
+                    return (
+                      <div key={e.id} className="border-y border-white/[0.06] bg-white/[0.03] px-4 py-2.5">
+                        <div className="truncate text-sm font-medium">{e.foodName}</div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            autoFocus
+                            value={editGrams}
+                            onChange={(ev) => setEditGrams(ev.target.value)}
+                            onKeyDown={(ev) => ev.key === 'Enter' && saveEdit(e)}
+                            className="w-20 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1.5 text-center text-base font-bold"
+                            aria-label="Gram"
+                          />
+                          <span className="text-xs text-slate-400">g</span>
+                          <span className="flex-1 text-xs tabular-nums text-slate-400">
+                            → {preview.calories} kcal · P{preview.proteinG} K{preview.carbsG} Y{preview.fatG}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            variant="secondary"
+                            className="flex-1 !py-1.5 !text-xs"
+                            onClick={() => setEditingId(null)}
+                          >
+                            İptal
+                          </Button>
+                          <Button className="flex-1 !py-1.5 !text-xs" disabled={!(g > 0)} onClick={() => saveEdit(e)}>
+                            Kaydet
+                          </Button>
+                        </div>
                       </div>
+                    );
+                  }
+                  return (
+                    <div key={e.id} className="flex items-center justify-between gap-2 px-4 py-1">
+                      <button onClick={() => startEdit(e)} className="min-w-0 flex-1 text-left">
+                        <div className="truncate text-sm">{e.foodName}</div>
+                        <div className="text-xs tabular-nums text-slate-500">
+                          {e.grams}g · {e.calories} kcal
+                          <span className="ml-1 text-slate-600">✏️</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => removeEntry(e.id)}
+                        className="btn-tap -mr-1 rounded-lg p-2 text-slate-600 active:bg-white/10"
+                        aria-label="Kaydı sil"
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <button
-                      onClick={() => removeEntry(e.id)}
-                      className="btn-tap -mr-1 rounded-lg p-2 text-slate-600 active:bg-white/10"
-                      aria-label="Kaydı sil"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
                 <button
                   onClick={() => push({ t: 'foodPicker', mealType: meal })}
                   className="btn-tap w-full px-4 pb-3 pt-1.5 text-left text-sm font-semibold text-emerald-400"
