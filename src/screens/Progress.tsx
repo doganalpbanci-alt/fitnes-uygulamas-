@@ -7,7 +7,7 @@ import { computeOverallStats } from '../lib/progressStats';
 import { getExerciseRecords } from '../lib/records';
 import { fmtDate, fmtKg } from '../lib/format';
 import { useNav } from '../store';
-import { Card, ExerciseThumb, OverloadBadge, ScreenHeader, groupLabel } from '../components/ui';
+import { Button, Card, ExerciseThumb, OverloadBadge, ScreenHeader, groupLabel } from '../components/ui';
 import { BodyHeatmap } from '../components/BodyHeatmap';
 
 export function LineChart({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
@@ -166,6 +166,7 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: string }) {
 
 export default function Progress() {
   const push = useNav((s) => s.push);
+  const setTab = useNav((s) => s.setTab);
   const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? [];
   const sessions = useLiveQuery(() => db.sessions.orderBy('date').reverse().toArray(), []) ?? [];
 
@@ -188,6 +189,28 @@ export default function Progress() {
   );
 
   const stats = useMemo(() => computeOverallStats(sessions, exercises), [sessions, exercises]);
+
+  // Hiç tamamlanmış antrenman yokken üç ayrı "kayıt yok" mesajı yerine tek bir boş durum göster.
+  if (stats.totalSessions === 0) {
+    return (
+      <div className="pb-4">
+        <ScreenHeader title="İlerleme" />
+        <div className="px-4">
+          <Card className="space-y-3 text-center">
+            <div className="text-3xl">📈</div>
+            <div className="font-bold">Henüz antrenman kaydın yok</div>
+            <div className="text-sm text-slate-400">
+              İlk antrenmanını tamamladığında istatistiklerin, rekorların, bölge yoğunluk haritan ve hareket
+              bazında ilerleme grafiklerin burada görünecek.
+            </div>
+            <Button className="w-full" onClick={() => setTab('workout')}>
+              Antrenmana Başla
+            </Button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-4">

@@ -2,9 +2,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DAY_NAMES, todayIndex, todayStr } from '../db';
 import { fmtDuration } from '../lib/format';
 import { eatingHoursFor } from '../lib/fasting';
+import { calcBMR, calcCalorieTarget, calcMacroTargets, calcTDEE } from '../lib/nutrition';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function Home() {
   const { push, setTab } = useNav();
@@ -29,6 +30,18 @@ export default function Home() {
         : false,
     [schedule?.templateId],
   );
+  const profile = useLiveQuery(() => db.profile.get(1), []);
+  const todayEntries = useLiveQuery(() => db.diaryEntries.where('date').equals(todayStr()).toArray(), []) ?? [];
+  const nutrition = useMemo(() => {
+    if (!profile) return null;
+    const bmr = calcBMR(profile.sex, profile.weightKg, profile.heightCm, profile.age);
+    const target = calcCalorieTarget(calcTDEE(bmr, profile.activityLevel), profile.goal, profile.goalRateKgPerWeek);
+    const macros = calcMacroTargets(target, profile.weightKg);
+    const consumed = todayEntries.reduce((a, e) => a + e.calories, 0);
+    const proteinG = todayEntries.reduce((a, e) => a + e.proteinG, 0);
+    return { target, consumed, proteinG, proteinTarget: macros.proteinG };
+  }, [profile, todayEntries]);
+
   const recentFasts = useLiveQuery(() => db.fasts.orderBy('startedAt').reverse().limit(5).toArray(), []) ?? [];
   const activeFast = recentFasts.find((f) => !f.endedAt);
   const lastEndedFast = recentFasts.filter((f) => f.endedAt).sort((a, b) => new Date(b.endedAt!).getTime() - new Date(a.endedAt!).getTime())[0];
@@ -75,7 +88,7 @@ export default function Home() {
           ) : (
             <div className="mt-2 flex items-center justify-between gap-3">
               <div className="text-xl font-bold tracking-tight">Dinlenme günü 😌</div>
-              <Button variant="secondary" onClick={() => setTab('workout')}>
+              <Button variant="secondary" className="shrink-0 whitespace-nowrap !px-3" onClick={() => setTab('workout')}>
                 Programı Düzenle
               </Button>
             </div>
@@ -141,6 +154,50 @@ export default function Home() {
             <div className="mt-2 flex items-center justify-between">
               <div className="text-xl font-bold tracking-tight">Aktif oruç yok</div>
               <span className="text-sm font-semibold text-emerald-400">Başlat ›</span>
+            </div>
+          )}
+        </Card>
+
+        <Card onClick={() => setTab('nutrition')}>
+          <div className="flex items-center gap-1.5 text-sm text-slate-400">
+            <span>🍎</span>
+            <span>Beslenme</span>
+          </div>
+          {nutrition ? (
+            (() => {
+              const remaining = nutrition.target - nutrition.consumed;
+              const pct = Math.min(100, Math.max(0, (nutrition.consumed / nutrition.target) * 100));
+              const proteinPct = Math.min(100, Math.max(0, (nutrition.proteinG / nutrition.proteinTarget) * 100));
+              return (
+                <>
+                  <div className="mt-2 flex items-baseline justify-between gap-3">
+                    <div className="text-xl font-bold tracking-tight tabular-nums">
+                      {Math.round(nutrition.consumed)}
+                      <span className="text-sm font-medium text-slate-400"> / {nutrition.target} kcal</span>
+                    </div>
+                    <span className={`shrink-0 text-sm font-semibold ${remaining < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {remaining < 0 ? `${Math.round(-remaining)} aştın` : `${Math.round(remaining)} kaldı`}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div
+                      className={`h-full rounded-full ${remaining < 0 ? 'bg-gradient-to-r from-rose-400 to-rose-500' : 'bg-gradient-to-r from-emerald-400 to-emerald-500'}`}
+                      style={{ width: `${pct}%`, transition: 'width 0.5s ease' }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                    <span className="tabular-nums">
+                      Protein {Math.round(nutrition.proteinG)} / {nutrition.proteinTarget}g
+                    </span>
+                    <span className="tabular-nums text-slate-500">%{Math.round(proteinPct)}</span>
+                  </div>
+                </>
+              );
+            })()
+          ) : (
+            <div className="mt-2 flex items-center justify-between">
+              <div className="text-xl font-bold tracking-tight">Profilini oluştur</div>
+              <span className="text-sm font-semibold text-emerald-400">Başla ›</span>
             </div>
           )}
         </Card>
