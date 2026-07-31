@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { type MealType } from '../db';
 import { analyzeFoodPhoto, getOpenAiKey, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
+import { prepareFoodPhoto } from '../lib/imagePrep';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import FoodItemsReview from './FoodItemsReview';
@@ -25,13 +26,11 @@ export default function PhotoFoodScan({
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [initialReply, setInitialReply] = useState('');
 
-  const onFile = (file: File) => {
+  const onFile = async (file: File) => {
     setError('');
     setItems(null);
     setMessages(null);
-    const reader = new FileReader();
-    reader.onload = () => setPhoto(reader.result as string);
-    reader.readAsDataURL(file);
+    setPhoto(await prepareFoodPhoto(file));
   };
 
   const analyze = async () => {

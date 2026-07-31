@@ -48,7 +48,11 @@ const SYSTEM_PROMPT =
   'yumurta", "beyaz peynir", "zeytin", "ekmek", "kızarmış patates" ayrı ayrı öğeler olmalı — hepsini tek bir ' +
   'satırda toplama). Aynı türden birden fazla parça varsa tek satırda birleştirebilirsin (örn. "2 haşlanmış ' +
   'yumurta"). Her öğe için tarif edilen/gördüğün porsiyonun TAMAMI için (100g için değil) besin değerlerini ' +
-  'tahmin et. Kullanıcı bir düzeltme yaparsa ("bu peynir değil beyaz peynir", "patates miktarı daha az", ' +
+  'tahmin et. PORSİYON TAHMİNİ: fotoğraftaki bilinen boyutlu nesneleri ölçek referansı al — standart yemek ' +
+  'tabağı ~26 cm, çay tabağı ~15 cm, çatal ~19 cm, yemek kaşığı dolusu ~15 g, çay bardağı ~110 ml, su ' +
+  'bardağı ~200 ml. Besinin tabağın ne kadarını kapladığını ve kalınlığını/yüksekliğini de hesaba kat, ' +
+  'yalnızca göz kararı bir sayı verme. Kalori ile makrolar tutarlı olmalı: protein×4 + karbonhidrat×4 + ' +
+  'yağ×9 ≈ kalori. Kullanıcı bir düzeltme yaparsa ("bu peynir değil beyaz peynir", "patates miktarı daha az", ' +
   '"yumurta yok say" gibi) bunu dikkate alıp ilgili öğeyi güncelle veya kaldır, ardından GÜNCEL TÜM listeyi ' +
   'yeniden gönder. Besin doğal olarak sayılabilen bir birimle ölçülüyorsa (yumurta→adet, ekmek→dilim, ' +
   'zeytin→adet, muz→adet, çorba→kase gibi) "unit" alanına birimin TEKİL Türkçe adını, "unitCount" alanına ' +
@@ -61,6 +65,40 @@ const SYSTEM_PROMPT =
 
 function num(v: unknown): number {
   return typeof v === 'number' && isFinite(v) ? Math.max(0, v) : 0;
+}
+
+/** Atwater katsayıları — makrolardan kalori: protein/karbonhidrat 4, yağ 9 kcal/g. */
+export function caloriesFromMacros(proteinG: number, carbsG: number, fatG: number): number {
+  return proteinG * 4 + carbsG * 4 + fatG * 9;
+}
+
+const MACRO_MISMATCH_TOLERANCE = 0.2;
+
+/** Modelin verdiği kalori ile makroların ima ettiği kalori tutarsız olabiliyor (ör. "200 kcal"
+ * derken makroları 350 kcal'ye denk gelmek). Sapma %20'yi aşarsa makrolar, belirtilen kaloriye
+ * oranla ölçeklenir: modelin amaçladığı makro *dağılımı* korunur ama sayılar kendi içinde
+ * tutarlı hâle gelir — yoksa günlükteki kalori toplamı makro çubuklarıyla çelişiyordu. */
+export function reconcileMacros(item: {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}): { proteinG: number; carbsG: number; fatG: number; adjusted: boolean } {
+  const implied = caloriesFromMacros(item.proteinG, item.carbsG, item.fatG);
+  if (item.calories <= 0 || implied <= 0) {
+    return { proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG, adjusted: false };
+  }
+  const drift = Math.abs(implied - item.calories) / item.calories;
+  if (drift <= MACRO_MISMATCH_TOLERANCE) {
+    return { proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG, adjusted: false };
+  }
+  const k = item.calories / implied;
+  return {
+    proteinG: Math.round(item.proteinG * k * 10) / 10,
+    carbsG: Math.round(item.carbsG * k * 10) / 10,
+    fatG: Math.round(item.fatG * k * 10) / 10,
+    adjusted: true,
+  };
 }
 
 export function buildInitialMessages(dataUrl: string): ChatMessage[] {
@@ -83,7 +121,15 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: MODEL, response_format: { type: 'json_object' }, max_tokens: 700, messages }),
+    // Düşük temperature: bu bir yaratıcılık değil tahmin işi — aynı fotoğrafın her analizde
+    // benzer gramajlar vermesi isteniyor.
+    body: JSON.stringify({
+      model: MODEL,
+      response_format: { type: 'json_object' },
+      max_tokens: 700,
+      temperature: 0.2,
+      messages,
+    }),
   });
 
   if (res.status === 401) throw new Error('unauthorized');
@@ -103,13 +149,20 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
     // Birim verildiyse gramajı birimden türet — modelin verdiği estimatedGrams ile
     // unitCount × unitGrams çelişirse birim bilgisi esas alınır.
     const grams = hasUnit ? unitCount! * unitGrams! : num(it.estimatedGrams) || 100;
-    return {
-      name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin',
-      grams,
-      calories: Math.round(num(it.calories)),
+    const calories = Math.round(num(it.calories));
+    const macros = reconcileMacros({
+      calories,
       proteinG: Math.round(num(it.proteinG) * 10) / 10,
       carbsG: Math.round(num(it.carbsG) * 10) / 10,
       fatG: Math.round(num(it.fatG) * 10) / 10,
+    });
+    return {
+      name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin',
+      grams,
+      calories,
+      proteinG: macros.proteinG,
+      carbsG: macros.carbsG,
+      fatG: macros.fatG,
       ...(hasUnit ? { unitLabel, unitCount, unitGrams } : {}),
     };
   });
