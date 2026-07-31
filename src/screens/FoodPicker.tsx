@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
-import { calcBMR, calcCalorieTarget, calcTDEE } from '../lib/nutrition';
+import { useNutritionTargets } from '../lib/useTargets';
 import { searchFoods, type OFFProduct } from '../lib/openFoodFacts';
 import {
   computeFrequentFoods,
@@ -374,7 +374,6 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const [selection, setSelection] = useState<Map<string, FoodRow>>(new Map());
   const [showAllSameMeal, setShowAllSameMeal] = useState(false);
 
-  const profile = useLiveQuery(() => db.profile.get(1), []);
   const myFoods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
   const diaryEntries = useLiveQuery(() => db.diaryEntries.toArray(), []) ?? [];
   const foodById = useMemo(() => new Map(myFoods.map((f) => [f.id, f])), [myFoods]);
@@ -384,12 +383,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const openRow = (row: FoodRow) =>
     setOpened({ food: foodById.get(row.food.id) ?? row.food, grams: row.grams, unitLabel: row.unitLabel });
 
-  const calorieTarget = useMemo(() => {
-    if (!profile) return null;
-    const bmr = calcBMR(profile.sex, profile.weightKg, profile.heightCm, profile.age);
-    const tdee = calcTDEE(bmr, profile.activityLevel);
-    return calcCalorieTarget(tdee, profile.goal, profile.goalRateKgPerWeek);
-  }, [profile]);
+  const calorieTarget = useNutritionTargets()?.calorieTarget ?? null;
   const tgdFor = (calories: number) => (calorieTarget ? Math.round((calories / calorieTarget) * 100) : null);
 
   const frequent = useMemo(() => computeFrequentFoods(diaryEntries), [diaryEntries]);

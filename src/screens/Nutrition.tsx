@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type DiaryEntry, type MealType } from '../db';
-import { calcBMR, calcTDEE, calcCalorieTarget, calcMacroTargets } from '../lib/nutrition';
+import { useNutritionTargets } from '../lib/useTargets';
 import { per100Of, scaleTo, updateEntryGrams } from '../lib/diary';
 import { fmtQty, portionLabel } from '../lib/servings';
 import { computeNutritionWeeklyStats, type DayNutritionSummary } from '../lib/weeklyStats';
@@ -132,14 +132,7 @@ export default function Nutrition() {
   const weekEntries = useLiveQuery(() => db.diaryEntries.where('date').aboveOrEqual(weekCutoff).toArray(), [weekCutoff]) ?? [];
   const weekly = useMemo(() => computeNutritionWeeklyStats(weekEntries), [weekEntries]);
 
-  const targets = useMemo(() => {
-    if (!profile) return null;
-    const bmr = calcBMR(profile.sex, profile.weightKg, profile.heightCm, profile.age);
-    const tdee = calcTDEE(bmr, profile.activityLevel);
-    const calorieTarget = calcCalorieTarget(tdee, profile.goal, profile.goalRateKgPerWeek);
-    const macros = calcMacroTargets(calorieTarget, profile.weightKg);
-    return { calorieTarget, ...macros };
-  }, [profile]);
+  const targets = useNutritionTargets();
 
   const totals = useMemo(
     () =>

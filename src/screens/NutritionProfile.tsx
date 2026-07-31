@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type ActivityLevel, type NutritionGoal, type Sex } from '../db';
-import { ACTIVITY_LEVELS, GOALS, calcBMR, calcTDEE, calcCalorieTarget, calcMacroTargets } from '../lib/nutrition';
+import { ACTIVITY_LEVELS, GOALS, computeTargets } from '../lib/nutrition';
+import { useLatestBodyFatPct } from '../lib/useTargets';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 
@@ -35,10 +36,23 @@ export default function NutritionProfile() {
   const rateN = Math.max(0, Number(rate) || 0);
   const valid = ageN > 0 && heightN > 0 && weightN > 0;
 
-  const bmr = valid ? calcBMR(sex, weightN, heightN, ageN) : 0;
-  const tdee = valid ? calcTDEE(bmr, activityLevel) : 0;
-  const calorieTarget = valid ? calcCalorieTarget(tdee, goal, rateN) : 0;
-  const macros = valid ? calcMacroTargets(calorieTarget, weightN) : { proteinG: 0, fatG: 0, carbsG: 0 };
+  const bodyFatPct = useLatestBodyFatPct();
+  const targets = valid
+    ? computeTargets({
+        sex,
+        age: ageN,
+        heightCm: heightN,
+        weightKg: weightN,
+        activityLevel,
+        goal,
+        goalRateKgPerWeek: rateN,
+        bodyFatPct,
+      })
+    : null;
+  const bmr = targets?.bmr ?? 0;
+  const tdee = targets?.tdee ?? 0;
+  const calorieTarget = targets?.calorieTarget ?? 0;
+  const macros = targets ?? { proteinG: 0, fatG: 0, carbsG: 0 };
 
   const save = async () => {
     if (!valid) return;
@@ -204,6 +218,11 @@ export default function NutritionProfile() {
               <div className="text-3xl font-extrabold text-emerald-300">{calorieTarget}</div>
               <div className="text-xs text-slate-400">kcal</div>
             </div>
+            {targets?.clampReason && (
+              <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.08] p-2.5 text-xs text-amber-200">
+                ⚠️ {targets.clampReason} (İstenen: {targets.rawCalorieTarget} kcal)
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2 text-center text-sm">
               <div>
                 <div className="font-bold">{macros.proteinG}g</div>
@@ -218,6 +237,22 @@ export default function NutritionProfile() {
                 <div className="text-xs text-slate-400">Yağ</div>
               </div>
             </div>
+            {targets && (
+              <div className="border-t border-white/[0.06] pt-2 text-[11px] leading-relaxed text-slate-500">
+                {targets.bmrFormula === 'katch-mcardle' ? (
+                  <>
+                    BMR, ölçülen vücut yağ oranın (%{bodyFatPct}) kullanılarak{' '}
+                    <b className="text-slate-400">Katch-McArdle</b> formülüyle hesaplandı — yağsız kütlen{' '}
+                    {targets.leanMassKg} kg. Protein hedefi de yağsız kütleye göre belirlendi.
+                  </>
+                ) : (
+                  <>
+                    BMR <b className="text-slate-400">Mifflin-St Jeor</b> formülüyle hesaplandı. Kilo Takibi'ne
+                    vücut yağ oranı içeren bir ölçüm eklersen daha isabetli olan Katch-McArdle'a geçilir.
+                  </>
+                )}
+              </div>
+            )}
           </Card>
         )}
       </div>

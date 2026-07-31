@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DAY_NAMES, todayIndex, todayStr } from '../db';
 import { fmtDuration } from '../lib/format';
 import { eatingHoursFor } from '../lib/fasting';
-import { calcBMR, calcCalorieTarget, calcMacroTargets, calcTDEE } from '../lib/nutrition';
+import { useNutritionTargets } from '../lib/useTargets';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import { useEffect, useMemo, useState } from 'react';
@@ -30,17 +30,14 @@ export default function Home() {
         : false,
     [schedule?.templateId],
   );
-  const profile = useLiveQuery(() => db.profile.get(1), []);
   const todayEntries = useLiveQuery(() => db.diaryEntries.where('date').equals(todayStr()).toArray(), []) ?? [];
+  const targets = useNutritionTargets();
   const nutrition = useMemo(() => {
-    if (!profile) return null;
-    const bmr = calcBMR(profile.sex, profile.weightKg, profile.heightCm, profile.age);
-    const target = calcCalorieTarget(calcTDEE(bmr, profile.activityLevel), profile.goal, profile.goalRateKgPerWeek);
-    const macros = calcMacroTargets(target, profile.weightKg);
+    if (!targets) return null;
     const consumed = todayEntries.reduce((a, e) => a + e.calories, 0);
     const proteinG = todayEntries.reduce((a, e) => a + e.proteinG, 0);
-    return { target, consumed, proteinG, proteinTarget: macros.proteinG };
-  }, [profile, todayEntries]);
+    return { target: targets.calorieTarget, consumed, proteinG, proteinTarget: targets.proteinG };
+  }, [targets, todayEntries]);
 
   const recentFasts = useLiveQuery(() => db.fasts.orderBy('startedAt').reverse().limit(5).toArray(), []) ?? [];
   const activeFast = recentFasts.find((f) => !f.endedAt);
