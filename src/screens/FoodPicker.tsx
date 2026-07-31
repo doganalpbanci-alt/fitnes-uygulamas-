@@ -125,18 +125,39 @@ function GramsStep({
   onDone: () => void;
   onBack: () => void;
 }) {
-  const servings = normalizeServings(food.servings ?? []);
+  // Besinin birimleri düzenlenebilir olduğu için state'te tutuluyor: kullanıcı burada yeni bir
+  // birim tanımlayabiliyor ve bu birim besinle birlikte kalıcı olarak kaydediliyor.
+  const [servings, setServings] = useState(() => normalizeServings(food.servings ?? []));
   // Başlangıç birimi: daha önce bu birimle eklendiyse onu, yoksa varsa ilk birimi, yoksa gramı seç.
   const [unit, setUnit] = useState(() => {
-    if (initialUnit && servings.some((s) => s.label === initialUnit)) return initialUnit;
-    return servings[0]?.label ?? GRAM_UNIT;
+    const initial = normalizeServings(food.servings ?? []);
+    if (initialUnit && initial.some((s) => s.label === initialUnit)) return initialUnit;
+    return initial[0]?.label ?? GRAM_UNIT;
   });
   const activeServing = servings.find((s) => s.label === unit);
   const [qty, setQty] = useState(() => {
+    const initial = normalizeServings(food.servings ?? []);
     const startGrams = initialGrams ?? 100;
-    const s = initialUnit ? servings.find((x) => x.label === initialUnit) : servings[0];
+    const s = initialUnit ? initial.find((x) => x.label === initialUnit) : initial[0];
     return s ? fmtQty(Math.round((startGrams / s.grams) * 100) / 100) : String(startGrams);
   });
+  const [addingUnit, setAddingUnit] = useState(false);
+  const [newUnitLabel, setNewUnitLabel] = useState('');
+  const [newUnitGrams, setNewUnitGrams] = useState('');
+
+  const addUnit = () => {
+    const label = newUnitLabel.trim();
+    const grams = Number(newUnitGrams.replace(',', '.'));
+    if (!label || !(grams > 0)) return;
+    const next = normalizeServings([...servings, { label, grams }]);
+    setServings(next);
+    setUnit(label);
+    // Yeni birimde, o ana kadarki gram miktarına denk gelen adedi göster.
+    setQty(fmtQty(Math.round((g / grams) * 100) / 100) || '1');
+    setAddingUnit(false);
+    setNewUnitLabel('');
+    setNewUnitGrams('');
+  };
 
   const qtyNum = Math.max(0, Number(qty.replace(',', '.')) || 0);
   const g = activeServing ? qtyNum * activeServing.grams : qtyNum;
@@ -156,7 +177,8 @@ function GramsStep({
   };
 
   const confirm = async () => {
-    await db.foods.put(food);
+    // Burada tanımlanan birimler besinle kaydedilir; bir dahaki eklemede hazır gelir.
+    await db.foods.put({ ...food, servings: servings.length ? servings : undefined });
     await db.diaryEntries.add({
       date: todayStr(),
       mealType,
@@ -184,21 +206,69 @@ function GramsStep({
           <div className="text-xs text-slate-500">{MEAL_LABELS[mealType]} öğününe eklenecek</div>
         </Card>
         <Card className="space-y-2">
-          {servings.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {[...servings.map((s) => s.label), GRAM_UNIT].map((label) => (
-                <button
-                  key={label}
-                  onClick={() => switchUnit(label)}
-                  className={`btn-tap rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
-                    unit === label
-                      ? 'border-emerald-400/50 bg-emerald-400/15 text-emerald-300'
-                      : 'border-white/[0.08] bg-white/[0.03] text-slate-300'
-                  }`}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[...servings.map((s) => s.label), GRAM_UNIT].map((label) => (
+              <button
+                key={label}
+                onClick={() => switchUnit(label)}
+                className={`btn-tap rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
+                  unit === label
+                    ? 'border-emerald-400/50 bg-emerald-400/15 text-emerald-300'
+                    : 'border-white/[0.08] bg-white/[0.03] text-slate-300'
+                }`}
+              >
+                {label === GRAM_UNIT ? 'gram' : label}
+              </button>
+            ))}
+            {!addingUnit && (
+              <button
+                onClick={() => setAddingUnit(true)}
+                className="btn-tap rounded-lg border border-dashed border-white/20 px-2.5 py-1.5 text-xs font-semibold text-emerald-400"
+              >
+                + Birim
+              </button>
+            )}
+          </div>
+          {addingUnit && (
+            <div className="space-y-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-2.5">
+              <div className="text-xs text-slate-400">
+                Bu besin için bir ölçü tanımla — bir dahaki sefere hazır gelir.
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500">1</span>
+                <input
+                  value={newUnitLabel}
+                  onChange={(e) => setNewUnitLabel(e.target.value)}
+                  placeholder="adet"
+                  autoFocus
+                  className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center text-sm"
+                  aria-label="Birim adı"
+                />
+                <span className="text-xs text-slate-500">=</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={newUnitGrams}
+                  onChange={(e) => setNewUnitGrams(e.target.value)}
+                  placeholder="60"
+                  className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center text-sm"
+                  aria-label="Birim gramı"
+                />
+                <span className="text-xs text-slate-500">g</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1 !py-1.5 !text-xs" onClick={() => setAddingUnit(false)}>
+                  İptal
+                </Button>
+                <Button
+                  className="flex-1 !py-1.5 !text-xs"
+                  disabled={!newUnitLabel.trim() || !(Number(newUnitGrams.replace(',', '.')) > 0)}
+                  onClick={addUnit}
                 >
-                  {label === GRAM_UNIT ? 'gram' : label}
-                </button>
-              ))}
+                  Ekle
+                </Button>
+              </div>
             </div>
           )}
           <label className="block">
