@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type DiaryEntry, type MealType } from '../db';
 import { calcBMR, calcTDEE, calcCalorieTarget, calcMacroTargets } from '../lib/nutrition';
 import { per100Of, scaleTo, updateEntryGrams } from '../lib/diary';
+import { fmtQty, portionLabel } from '../lib/servings';
 import { computeNutritionWeeklyStats, type DayNutritionSummary } from '../lib/weeklyStats';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
@@ -161,13 +162,21 @@ export default function Nutrition() {
 
   const startEdit = (e: DiaryEntry) => {
     setEditingId(e.id ?? null);
-    setEditGrams(String(e.grams));
+    // Birimle eklendiyse birim adedini, değilse gramı düzenlet.
+    setEditGrams(e.unitLabel && e.unitCount != null ? fmtQty(e.unitCount) : String(e.grams));
+  };
+
+  /** Düzenleme alanına girilen değeri grama çevirir (birimle eklenmiş kayıtlarda adet × birim gramı). */
+  const editedGrams = (e: DiaryEntry) => {
+    const n = Math.max(0, Number(editGrams.replace(',', '.')) || 0);
+    return e.unitLabel && e.unitGrams ? n * e.unitGrams : n;
   };
 
   const saveEdit = async (e: DiaryEntry) => {
-    const g = Math.max(0, Number(editGrams) || 0);
+    const g = editedGrams(e);
     if (!(g > 0)) return;
-    await updateEntryGrams(e, per100Of(e, foodMap.get(e.foodId)), g);
+    const n = Math.max(0, Number(editGrams.replace(',', '.')) || 0);
+    await updateEntryGrams(e, per100Of(e, foodMap.get(e.foodId)), g, e.unitLabel ? n : undefined);
     setEditingId(null);
   };
 
@@ -223,7 +232,8 @@ export default function Nutrition() {
                 </div>
                 {mealEntries.map((e) => {
                   if (editingId === e.id) {
-                    const g = Math.max(0, Number(editGrams) || 0);
+                    const byUnit = !!e.unitLabel && !!e.unitGrams;
+                    const g = editedGrams(e);
                     const preview = scaleTo(per100Of(e, foodMap.get(e.foodId)), g);
                     return (
                       <div key={e.id} className="border-y border-white/[0.06] bg-white/[0.03] px-4 py-2.5">
@@ -231,18 +241,20 @@ export default function Nutrition() {
                         <div className="mt-2 flex items-center gap-2">
                           <input
                             type="number"
-                            inputMode="numeric"
-                            min={1}
+                            inputMode="decimal"
+                            min={0}
+                            step={byUnit ? 0.5 : 1}
                             autoFocus
                             value={editGrams}
                             onChange={(ev) => setEditGrams(ev.target.value)}
                             onKeyDown={(ev) => ev.key === 'Enter' && saveEdit(e)}
                             className="w-20 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1.5 text-center text-base font-bold"
-                            aria-label="Gram"
+                            aria-label={byUnit ? e.unitLabel : 'Gram'}
                           />
-                          <span className="text-xs text-slate-400">g</span>
+                          <span className="text-xs text-slate-400">{byUnit ? e.unitLabel : 'g'}</span>
                           <span className="flex-1 text-xs tabular-nums text-slate-400">
                             → {preview.calories} kcal · P{preview.proteinG} K{preview.carbsG} Y{preview.fatG}
+                            {byUnit && <span className="text-slate-500"> · {Math.round(g)} g</span>}
                           </span>
                         </div>
                         <div className="mt-2 flex gap-2">
@@ -265,7 +277,7 @@ export default function Nutrition() {
                       <button onClick={() => startEdit(e)} className="min-w-0 flex-1 text-left">
                         <div className="truncate text-sm">{e.foodName}</div>
                         <div className="text-xs tabular-nums text-slate-500">
-                          {e.grams}g · {e.calories} kcal
+                          {portionLabel(e)} · {e.calories} kcal
                           <span className="ml-1 text-slate-600">✏️</span>
                         </div>
                       </button>

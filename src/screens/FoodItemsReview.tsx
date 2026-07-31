@@ -64,6 +64,22 @@ export default function FoodItemsReview({
     onItemsChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   };
 
+  /** Birim adedi değişince gram ve besin değerleri orantılı olarak yeniden hesaplanır. */
+  const updateUnitCount = (i: number, count: number) => {
+    const it = items[i];
+    if (!it.unitGrams || !(count > 0)) return;
+    const newGrams = Math.round(count * it.unitGrams * 10) / 10;
+    const k = it.grams > 0 ? newGrams / it.grams : 1;
+    updateItem(i, {
+      unitCount: count,
+      grams: newGrams,
+      calories: Math.round(it.calories * k),
+      proteinG: Math.round(it.proteinG * k * 10) / 10,
+      carbsG: Math.round(it.carbsG * k * 10) / 10,
+      fatG: Math.round(it.fatG * k * 10) / 10,
+    });
+  };
+
   const removeItem = (i: number) => {
     onItemsChange(items.filter((_, idx) => idx !== i));
   };
@@ -91,6 +107,7 @@ export default function FoodItemsReview({
     for (let i = 0; i < validItems.length; i++) {
       const it = validItems[i];
       const factor = it.grams > 0 ? 100 / it.grams : 1;
+      const hasUnit = !!it.unitLabel && !!it.unitGrams && it.unitCount != null;
       const food: FoodItem = {
         id: `ai_${now}_${i}`,
         name: it.name,
@@ -99,6 +116,8 @@ export default function FoodItemsReview({
         carbsPer100g: Math.round(it.carbsG * factor * 10) / 10,
         fatPer100g: Math.round(it.fatG * factor * 10) / 10,
         source: 'ai',
+        // Birimi besinle birlikte sakla ki sonraki eklemelerde de adet/dilim seçilebilsin.
+        ...(hasUnit ? { servings: [{ label: it.unitLabel!, grams: it.unitGrams! }] } : {}),
       };
       await db.foods.put(food);
       await db.diaryEntries.add({
@@ -112,6 +131,7 @@ export default function FoodItemsReview({
         carbsG: it.carbsG,
         fatG: it.fatG,
         loggedAt,
+        ...(hasUnit ? { unitLabel: it.unitLabel, unitCount: it.unitCount, unitGrams: it.unitGrams } : {}),
       });
     }
     onDone();
@@ -139,6 +159,24 @@ export default function FoodItemsReview({
               🗑️
             </button>
           </div>
+          {it.unitLabel && it.unitGrams != null && (
+            <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2 py-1.5">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={it.unitCount ?? 1}
+                onChange={(e) => updateUnitCount(i, Math.max(0, Number(e.target.value) || 0))}
+                className="w-16 rounded-lg border border-white/10 bg-white/[0.04] px-1 py-1 text-center text-sm font-bold"
+                aria-label={`${it.unitLabel} adedi`}
+              />
+              <span className="text-sm font-semibold text-emerald-300">{it.unitLabel}</span>
+              <span className="text-xs text-slate-500">
+                (1 {it.unitLabel} ≈ {it.unitGrams} g)
+              </span>
+            </div>
+          )}
           <div className="grid grid-cols-5 gap-1.5">
             <label className="block">
               <input

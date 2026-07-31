@@ -1,3 +1,6 @@
+import { parseServingSize } from './servings';
+import type { Serving } from '../db';
+
 export interface OFFProduct {
   id: string;
   name: string;
@@ -6,6 +9,7 @@ export interface OFFProduct {
   proteinPer100g: number;
   carbsPer100g: number;
   fatPer100g: number;
+  servings?: Serving[];
 }
 
 interface OFFNutriments {
@@ -19,11 +23,13 @@ interface OFFRawProduct {
   code?: string;
   product_name?: string;
   brands?: string;
+  serving_size?: string;
   nutriments?: OFFNutriments;
 }
 
 function toProduct(p: OFFRawProduct, fallbackId?: string): OFFProduct | null {
   if (!p.product_name || p.nutriments?.['energy-kcal_100g'] == null) return null;
+  const serving = parseServingSize(p.serving_size);
   return {
     id: p.code ?? fallbackId ?? p.product_name,
     name: p.product_name,
@@ -32,6 +38,7 @@ function toProduct(p: OFFRawProduct, fallbackId?: string): OFFProduct | null {
     proteinPer100g: Math.round((p.nutriments.proteins_100g ?? 0) * 10) / 10,
     carbsPer100g: Math.round((p.nutriments.carbohydrates_100g ?? 0) * 10) / 10,
     fatPer100g: Math.round((p.nutriments.fat_100g ?? 0) * 10) / 10,
+    servings: serving ? [serving] : undefined,
   };
 }
 
@@ -40,7 +47,7 @@ export async function searchFoods(query: string): Promise<OFFProduct[]> {
   const url =
     `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}` +
     `&search_simple=1&action=process&json=1&page_size=25` +
-    `&fields=code,product_name,brands,nutriments`;
+    `&fields=code,product_name,brands,serving_size,nutriments`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('Arama başarısız oldu');
   const data = await res.json();

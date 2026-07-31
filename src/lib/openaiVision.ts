@@ -21,6 +21,10 @@ export interface AiFoodItem {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  /** Besin doğal olarak sayılabiliyorsa ("adet", "dilim") birim bilgisi. */
+  unitLabel?: string;
+  unitCount?: number;
+  unitGrams?: number;
 }
 
 export interface AiChatTurn {
@@ -46,9 +50,14 @@ const SYSTEM_PROMPT =
   'yumurta"). Her öğe için tarif edilen/gördüğün porsiyonun TAMAMI için (100g için değil) besin değerlerini ' +
   'tahmin et. Kullanıcı bir düzeltme yaparsa ("bu peynir değil beyaz peynir", "patates miktarı daha az", ' +
   '"yumurta yok say" gibi) bunu dikkate alıp ilgili öğeyi güncelle veya kaldır, ardından GÜNCEL TÜM listeyi ' +
-  'yeniden gönder. HER ZAMAN sadece şu şekilde bir JSON nesnesi döndür, başka hiçbir şey yazma: {"reply": ' +
-  'kullanıcıya kısa Türkçe yanıtın (1 cümle), "items": [{"name": Türkçe besin adı, "estimatedGrams": sayı, ' +
-  '"calories": sayı, "proteinG": sayı, "carbsG": sayı, "fatG": sayı}, ...]}';
+  'yeniden gönder. Besin doğal olarak sayılabilen bir birimle ölçülüyorsa (yumurta→adet, ekmek→dilim, ' +
+  'zeytin→adet, muz→adet, çorba→kase gibi) "unit" alanına birimin TEKİL Türkçe adını, "unitCount" alanına ' +
+  'kaç birim olduğunu ve "unitGrams" alanına BİR birimin gram karşılığını yaz; ölçülemiyorsa (pilav, salata, ' +
+  'kıyma gibi) bu üç alanı null bırak. estimatedGrams her durumda dolu olmalı ve birim verdiysen ' +
+  'unitCount × unitGrams ile tutarlı olmalı. HER ZAMAN sadece şu şekilde bir JSON nesnesi döndür, başka ' +
+  'hiçbir şey yazma: {"reply": kullanıcıya kısa Türkçe yanıtın (1 cümle), "items": [{"name": Türkçe besin ' +
+  'adı, "estimatedGrams": sayı, "calories": sayı, "proteinG": sayı, "carbsG": sayı, "fatG": sayı, ' +
+  '"unit": metin|null, "unitCount": sayı|null, "unitGrams": sayı|null}, ...]}';
 
 function num(v: unknown): number {
   return typeof v === 'number' && isFinite(v) ? Math.max(0, v) : 0;
@@ -86,14 +95,24 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
   const parsed = JSON.parse(content);
 
   const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
-  const items: AiFoodItem[] = rawItems.map((it: Record<string, unknown>) => ({
-    name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin',
-    grams: num(it.estimatedGrams) || 100,
-    calories: Math.round(num(it.calories)),
-    proteinG: Math.round(num(it.proteinG) * 10) / 10,
-    carbsG: Math.round(num(it.carbsG) * 10) / 10,
-    fatG: Math.round(num(it.fatG) * 10) / 10,
-  }));
+  const items: AiFoodItem[] = rawItems.map((it: Record<string, unknown>) => {
+    const unitLabel = typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : undefined;
+    const unitGrams = num(it.unitGrams) || undefined;
+    const unitCount = num(it.unitCount) || undefined;
+    const hasUnit = !!unitLabel && !!unitGrams && !!unitCount;
+    // Birim verildiyse gramajı birimden türet — modelin verdiği estimatedGrams ile
+    // unitCount × unitGrams çelişirse birim bilgisi esas alınır.
+    const grams = hasUnit ? unitCount! * unitGrams! : num(it.estimatedGrams) || 100;
+    return {
+      name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin',
+      grams,
+      calories: Math.round(num(it.calories)),
+      proteinG: Math.round(num(it.proteinG) * 10) / 10,
+      carbsG: Math.round(num(it.carbsG) * 10) / 10,
+      fatG: Math.round(num(it.fatG) * 10) / 10,
+      ...(hasUnit ? { unitLabel, unitCount, unitGrams } : {}),
+    };
+  });
   if (items.length === 0) throw new Error('empty-response');
 
   const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.trim() : 'Tahminimi güncelledim.';
@@ -141,6 +160,9 @@ export function sendCorrection(
             proteinG: it.proteinG,
             carbsG: it.carbsG,
             fatG: it.fatG,
+            unit: it.unitLabel ?? null,
+            unitCount: it.unitCount ?? null,
+            unitGrams: it.unitGrams ?? null,
           })),
         }),
       };

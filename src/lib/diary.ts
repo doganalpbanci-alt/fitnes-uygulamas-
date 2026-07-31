@@ -38,8 +38,18 @@ export function scaleTo(per100: Per100, grams: number) {
   };
 }
 
-/** Zaten eklenmiş bir kaydın gramajını değiştirir; kalori ve makrolar yeniden hesaplanır. */
-export async function updateEntryGrams(entry: DiaryEntry, per100: Per100, newGrams: number) {
+/** Zaten eklenmiş bir kaydın miktarını değiştirir; kalori ve makrolar yeniden hesaplanır.
+ * `newUnitCount` verilirse kayıt birimiyle (ör. "3 adet") güncellenir. */
+export async function updateEntryGrams(
+  entry: DiaryEntry,
+  per100: Per100,
+  newGrams: number,
+  newUnitCount?: number,
+) {
   if (entry.id == null || !(newGrams > 0)) return;
-  await db.diaryEntries.update(entry.id, { grams: newGrams, ...scaleTo(per100, newGrams) });
+  await db.diaryEntries.update(entry.id, {
+    grams: Math.round(newGrams * 10) / 10,
+    ...scaleTo(per100, newGrams),
+    ...(newUnitCount != null ? { unitCount: newUnitCount } : {}),
+  });
 }
