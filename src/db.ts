@@ -88,6 +88,13 @@ export interface UserProfile {
   goalRateKgPerWeek: number;
 }
 
+/** Gram dışında doğal bir ölçü birimi (1 adet yumurta, 1 dilim ekmek, 1 porsiyon…).
+ * `grams` bir birimin gram karşılığıdır. */
+export interface Serving {
+  label: string;
+  grams: number;
+}
+
 export interface FoodItem {
   id: string; // barkod (OFF) ya da 'custom_' + zaman damgası
   name: string;
@@ -97,6 +104,7 @@ export interface FoodItem {
   carbsPer100g: number;
   fatPer100g: number;
   source: 'openfoodfacts' | 'custom' | 'ai';
+  servings?: Serving[];
 }
 
 export type MealType = 'kahvalti' | 'ogle' | 'aksam' | 'ara';
@@ -114,12 +122,17 @@ export interface DiaryEntry {
   mealType: MealType;
   foodId: string;
   foodName: string;
-  grams: number;
+  grams: number; // her zaman dolu — hesaplamalar bunun üzerinden yapılır
   calories: number;
   proteinG: number;
   carbsG: number;
   fatG: number;
   loggedAt: string;
+  // Gram yerine bir birimle girildiyse ("2 adet") gösterim için saklanır.
+  // grams === unitCount * unitGrams olur.
+  unitLabel?: string;
+  unitCount?: number;
+  unitGrams?: number;
 }
 
 export interface BodyWeightEntry {

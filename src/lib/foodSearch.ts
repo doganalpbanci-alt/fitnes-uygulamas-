@@ -88,6 +88,8 @@ export function dedupeFoodsByName(foods: FoodItem[]): FoodItem[] {
 export interface FrequentFood {
   name: string;
   foodId: string;
+  lastUnitLabel?: string;
+  lastUnitCount?: number;
   count: number;
   lastGrams: number;
   caloriesPer100g: number;
@@ -114,6 +116,8 @@ export function computeFrequentFoods(entries: DiaryEntry[], limit = 12): Frequen
         foodId: latest.foodId,
         count: rows.length,
         lastGrams: latest.grams,
+        lastUnitLabel: latest.unitLabel,
+        lastUnitCount: latest.unitCount,
         caloriesPer100g: Math.round(latest.calories * factor),
         proteinPer100g: Math.round(latest.proteinG * factor * 10) / 10,
         carbsPer100g: Math.round(latest.carbsG * factor * 10) / 10,
@@ -127,6 +131,8 @@ export function computeFrequentFoods(entries: DiaryEntry[], limit = 12): Frequen
 export interface RecentFood {
   name: string;
   foodId: string;
+  lastUnitLabel?: string;
+  lastUnitCount?: number;
   lastGrams: number;
   lastLoggedAt: string;
   lastMealType: MealType;
@@ -153,6 +159,8 @@ export function computeRecentFoods(entries: DiaryEntry[], limit = 40): RecentFoo
         name: latest.foodName,
         foodId: latest.foodId,
         lastGrams: latest.grams,
+        lastUnitLabel: latest.unitLabel,
+        lastUnitCount: latest.unitCount,
         lastLoggedAt: latest.loggedAt,
         lastMealType: latest.mealType,
         caloriesPer100g: Math.round(latest.calories * factor),

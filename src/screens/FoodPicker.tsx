@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
-import { calcBMR, calcCalorieTarget, calcTDEE } from '../lib/nutrition';
+import { useNutritionTargets } from '../lib/useTargets';
 import { searchFoods, type OFFProduct } from '../lib/openFoodFacts';
 import {
   computeFrequentFoods,
@@ -11,6 +11,7 @@ import {
   type FrequentFood,
   type RecentFood,
 } from '../lib/foodSearch';
+import { GRAM_UNIT, fmtQty, normalizeServings } from '../lib/servings';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 import PhotoFoodScan from './PhotoFoodScan';
@@ -28,37 +29,42 @@ interface FoodRow {
   grams: number;
   calories: number;
   servingLabel: string;
+  /** Daha önce bu birimle eklendiyse, miktar ekranı aynı birimle açılsın. */
+  unitLabel?: string;
+}
+
+/** Birimle eklenmiş bir porsiyonu "2 adet · 136 g", gramla eklenmişi "136 g" diye yazar. */
+function servingLabelFor(grams: number, unitLabel?: string, unitCount?: number): string {
+  if (unitLabel && unitCount != null) return `${fmtQty(unitCount)} ${unitLabel} · ${Math.round(grams)} g`;
+  return `${Math.round(grams)} g`;
 }
 
 function rowFromFoodItem(food: FoodItem, grams = 100): FoodRow {
   const factor = grams / 100;
-  return { key: food.id, food, grams, calories: Math.round(food.caloriesPer100g * factor), servingLabel: `${grams} g` };
+  return {
+    key: food.id,
+    food,
+    grams,
+    calories: Math.round(food.caloriesPer100g * factor),
+    servingLabel: `${Math.round(grams)} g`,
+  };
 }
 
 function rowFromOff(p: OFFProduct): FoodRow {
   return rowFromFoodItem(
-    { id: p.id, name: p.name, brand: p.brand, caloriesPer100g: p.caloriesPer100g, proteinPer100g: p.proteinPer100g, carbsPer100g: p.carbsPer100g, fatPer100g: p.fatPer100g, source: 'openfoodfacts' },
+    { id: p.id, name: p.name, brand: p.brand, caloriesPer100g: p.caloriesPer100g, proteinPer100g: p.proteinPer100g, carbsPer100g: p.carbsPer100g, fatPer100g: p.fatPer100g, source: 'openfoodfacts', servings: p.servings },
     100,
   );
 }
 
-function rowFromFrequent(f: FrequentFood): FoodRow {
+function rowFromLogged(f: FrequentFood | RecentFood): FoodRow {
   return {
     key: f.foodId,
     food: { id: f.foodId, name: f.name, caloriesPer100g: f.caloriesPer100g, proteinPer100g: f.proteinPer100g, carbsPer100g: f.carbsPer100g, fatPer100g: f.fatPer100g, source: 'custom' },
     grams: f.lastGrams,
     calories: Math.round((f.caloriesPer100g * f.lastGrams) / 100),
-    servingLabel: `${f.lastGrams} g`,
-  };
-}
-
-function rowFromRecent(f: RecentFood): FoodRow {
-  return {
-    key: f.foodId,
-    food: { id: f.foodId, name: f.name, caloriesPer100g: f.caloriesPer100g, proteinPer100g: f.proteinPer100g, carbsPer100g: f.carbsPer100g, fatPer100g: f.fatPer100g, source: 'custom' },
-    grams: f.lastGrams,
-    calories: Math.round((f.caloriesPer100g * f.lastGrams) / 100),
-    servingLabel: `${f.lastGrams} g`,
+    servingLabel: servingLabelFor(f.lastGrams, f.lastUnitLabel, f.lastUnitCount),
+    unitLabel: f.lastUnitLabel,
   };
 }
 
@@ -108,36 +114,85 @@ function GramsStep({
   food,
   mealType,
   initialGrams,
+  initialUnit,
   onDone,
   onBack,
 }: {
   food: FoodItem;
   mealType: MealType;
   initialGrams?: number;
+  initialUnit?: string;
   onDone: () => void;
   onBack: () => void;
 }) {
-  const [grams, setGrams] = useState(String(initialGrams ?? 100));
-  const g = Math.max(0, Number(grams) || 0);
+  // Besinin birimleri düzenlenebilir olduğu için state'te tutuluyor: kullanıcı burada yeni bir
+  // birim tanımlayabiliyor ve bu birim besinle birlikte kalıcı olarak kaydediliyor.
+  const [servings, setServings] = useState(() => normalizeServings(food.servings ?? []));
+  // Başlangıç birimi: daha önce bu birimle eklendiyse onu, yoksa varsa ilk birimi, yoksa gramı seç.
+  const [unit, setUnit] = useState(() => {
+    const initial = normalizeServings(food.servings ?? []);
+    if (initialUnit && initial.some((s) => s.label === initialUnit)) return initialUnit;
+    return initial[0]?.label ?? GRAM_UNIT;
+  });
+  const activeServing = servings.find((s) => s.label === unit);
+  const [qty, setQty] = useState(() => {
+    const initial = normalizeServings(food.servings ?? []);
+    const startGrams = initialGrams ?? 100;
+    const s = initialUnit ? initial.find((x) => x.label === initialUnit) : initial[0];
+    return s ? fmtQty(Math.round((startGrams / s.grams) * 100) / 100) : String(startGrams);
+  });
+  const [addingUnit, setAddingUnit] = useState(false);
+  const [newUnitLabel, setNewUnitLabel] = useState('');
+  const [newUnitGrams, setNewUnitGrams] = useState('');
+
+  const addUnit = () => {
+    const label = newUnitLabel.trim();
+    const grams = Number(newUnitGrams.replace(',', '.'));
+    if (!label || !(grams > 0)) return;
+    const next = normalizeServings([...servings, { label, grams }]);
+    setServings(next);
+    setUnit(label);
+    // Yeni birimde, o ana kadarki gram miktarına denk gelen adedi göster.
+    setQty(fmtQty(Math.round((g / grams) * 100) / 100) || '1');
+    setAddingUnit(false);
+    setNewUnitLabel('');
+    setNewUnitGrams('');
+  };
+
+  const qtyNum = Math.max(0, Number(qty.replace(',', '.')) || 0);
+  const g = activeServing ? qtyNum * activeServing.grams : qtyNum;
   const factor = g / 100;
   const calories = Math.round(food.caloriesPer100g * factor);
   const proteinG = Math.round(food.proteinPer100g * factor * 10) / 10;
   const carbsG = Math.round(food.carbsPer100g * factor * 10) / 10;
   const fatG = Math.round(food.fatPer100g * factor * 10) / 10;
 
+  // Birim değişince miktarı, gram karşılığı yaklaşık aynı kalacak şekilde çevir.
+  const switchUnit = (next: string) => {
+    const from = activeServing?.grams ?? 1;
+    const to = servings.find((s) => s.label === next)?.grams ?? 1;
+    const currentGrams = qtyNum * from;
+    setUnit(next);
+    setQty(fmtQty(Math.round((currentGrams / to) * 100) / 100));
+  };
+
   const confirm = async () => {
-    await db.foods.put(food);
+    // Burada tanımlanan birimler besinle kaydedilir; bir dahaki eklemede hazır gelir.
+    await db.foods.put({ ...food, servings: servings.length ? servings : undefined });
     await db.diaryEntries.add({
       date: todayStr(),
       mealType,
       foodId: food.id,
       foodName: food.name,
-      grams: g,
+      grams: Math.round(g * 10) / 10,
       calories,
       proteinG,
       carbsG,
       fatG,
       loggedAt: new Date().toISOString(),
+      ...(activeServing
+        ? { unitLabel: activeServing.label, unitCount: qtyNum, unitGrams: activeServing.grams }
+        : {}),
     });
     onDone();
   };
@@ -150,19 +205,92 @@ function GramsStep({
           {food.brand && <div className="text-sm text-slate-400">{food.brand}</div>}
           <div className="text-xs text-slate-500">{MEAL_LABELS[mealType]} öğününe eklenecek</div>
         </Card>
-        <Card>
+        <Card className="space-y-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[...servings.map((s) => s.label), GRAM_UNIT].map((label) => (
+              <button
+                key={label}
+                onClick={() => switchUnit(label)}
+                className={`btn-tap rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
+                  unit === label
+                    ? 'border-emerald-400/50 bg-emerald-400/15 text-emerald-300'
+                    : 'border-white/[0.08] bg-white/[0.03] text-slate-300'
+                }`}
+              >
+                {label === GRAM_UNIT ? 'gram' : label}
+              </button>
+            ))}
+            {!addingUnit && (
+              <button
+                onClick={() => setAddingUnit(true)}
+                className="btn-tap rounded-lg border border-dashed border-white/20 px-2.5 py-1.5 text-xs font-semibold text-emerald-400"
+              >
+                + Birim
+              </button>
+            )}
+          </div>
+          {addingUnit && (
+            <div className="space-y-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-2.5">
+              <div className="text-xs text-slate-400">
+                Bu besin için bir ölçü tanımla — bir dahaki sefere hazır gelir.
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500">1</span>
+                <input
+                  value={newUnitLabel}
+                  onChange={(e) => setNewUnitLabel(e.target.value)}
+                  placeholder="adet"
+                  autoFocus
+                  className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center text-sm"
+                  aria-label="Birim adı"
+                />
+                <span className="text-xs text-slate-500">=</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={newUnitGrams}
+                  onChange={(e) => setNewUnitGrams(e.target.value)}
+                  placeholder="60"
+                  className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center text-sm"
+                  aria-label="Birim gramı"
+                />
+                <span className="text-xs text-slate-500">g</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1 !py-1.5 !text-xs" onClick={() => setAddingUnit(false)}>
+                  İptal
+                </Button>
+                <Button
+                  className="flex-1 !py-1.5 !text-xs"
+                  disabled={!newUnitLabel.trim() || !(Number(newUnitGrams.replace(',', '.')) > 0)}
+                  onClick={addUnit}
+                >
+                  Ekle
+                </Button>
+              </div>
+            </div>
+          )}
           <label className="block">
-            <span className="text-sm text-slate-400">Miktar (gram)</span>
+            <span className="text-sm text-slate-400">
+              Miktar ({activeServing ? activeServing.label : 'gram'})
+            </span>
             <input
               type="number"
-              inputMode="numeric"
+              inputMode="decimal"
               min={0}
+              step={activeServing ? 0.5 : 1}
               autoFocus
-              value={grams}
-              onChange={(e) => setGrams(e.target.value)}
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
               className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-center text-2xl font-bold"
             />
           </label>
+          {activeServing && (
+            <div className="text-center text-xs text-slate-500">
+              1 {activeServing.label} ≈ {fmtQty(activeServing.grams)} g · toplam {Math.round(g)} g
+            </div>
+          )}
         </Card>
         <Card className="grid grid-cols-4 gap-2 text-center">
           <div>
@@ -182,7 +310,7 @@ function GramsStep({
             <div className="text-[10px] text-slate-400">Yağ</div>
           </div>
         </Card>
-        <Button className="w-full" disabled={g <= 0} onClick={confirm}>
+        <Button className="w-full" disabled={!(g > 0)} onClick={confirm}>
           Günlüğe Ekle
         </Button>
       </div>
@@ -196,11 +324,18 @@ function CustomFoodForm({ onCreated }: { onCreated: (food: FoodItem) => void }) 
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
+  const [unitLabel, setUnitLabel] = useState('');
+  const [unitGrams, setUnitGrams] = useState('');
 
   const valid = name.trim().length > 0 && Number(cal) >= 0;
 
   const create = () => {
     if (!valid) return;
+    const servings = normalizeServings([
+      unitLabel.trim() && Number(unitGrams) > 0
+        ? { label: unitLabel.trim(), grams: Number(unitGrams) }
+        : null,
+    ]);
     onCreated({
       id: 'custom_' + Date.now(),
       name: name.trim(),
@@ -209,6 +344,7 @@ function CustomFoodForm({ onCreated }: { onCreated: (food: FoodItem) => void }) 
       carbsPer100g: Math.max(0, Number(carbs) || 0),
       fatPer100g: Math.max(0, Number(fat) || 0),
       source: 'custom',
+      ...(servings.length ? { servings } : {}),
     });
   };
 
@@ -260,6 +396,27 @@ function CustomFoodForm({ onCreated }: { onCreated: (food: FoodItem) => void }) 
           className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center text-sm"
         />
       </div>
+      <div className="text-xs text-slate-500">Ölçü birimi (isteğe bağlı) — böylece adet/dilim ile ekleyebilirsin:</div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-slate-500">1</span>
+        <input
+          value={unitLabel}
+          onChange={(e) => setUnitLabel(e.target.value)}
+          placeholder="adet"
+          className="w-24 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center text-sm"
+        />
+        <span className="text-xs text-slate-500">=</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={0}
+          placeholder="60"
+          value={unitGrams}
+          onChange={(e) => setUnitGrams(e.target.value)}
+          className="w-20 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center text-sm"
+        />
+        <span className="text-xs text-slate-500">gram</span>
+      </div>
       <Button variant="secondary" className="w-full" disabled={!valid} onClick={create}>
         Devam Et
       </Button>
@@ -281,22 +438,22 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const [results, setResults] = useState<OFFProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [opened, setOpened] = useState<{ food: FoodItem; grams?: number } | null>(null);
+  const [opened, setOpened] = useState<{ food: FoodItem; grams?: number; unitLabel?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [describing, setDescribing] = useState(false);
   const [selection, setSelection] = useState<Map<string, FoodRow>>(new Map());
   const [showAllSameMeal, setShowAllSameMeal] = useState(false);
 
-  const profile = useLiveQuery(() => db.profile.get(1), []);
   const myFoods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
   const diaryEntries = useLiveQuery(() => db.diaryEntries.toArray(), []) ?? [];
+  const foodById = useMemo(() => new Map(myFoods.map((f) => [f.id, f])), [myFoods]);
 
-  const calorieTarget = useMemo(() => {
-    if (!profile) return null;
-    const bmr = calcBMR(profile.sex, profile.weightKg, profile.heightCm, profile.age);
-    const tdee = calcTDEE(bmr, profile.activityLevel);
-    return calcCalorieTarget(tdee, profile.goal, profile.goalRateKgPerWeek);
-  }, [profile]);
+  // Sık/son yenenler listesindeki satırlar günlük kayıtlarından türetiliyor ve birim tanımlarını
+  // içermiyor; kayıtlı besin varsa onu kullan ki "adet/dilim" seçenekleri de gelsin.
+  const openRow = (row: FoodRow) =>
+    setOpened({ food: foodById.get(row.food.id) ?? row.food, grams: row.grams, unitLabel: row.unitLabel });
+
+  const calorieTarget = useNutritionTargets()?.calorieTarget ?? null;
   const tgdFor = (calories: number) => (calorieTarget ? Math.round((calories / calorieTarget) * 100) : null);
 
   const frequent = useMemo(() => computeFrequentFoods(diaryEntries), [diaryEntries]);
@@ -446,7 +603,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                       tgd={tgdFor(row.calories)}
                       selected={selection.has(row.key)}
                       onToggleSelect={() => toggleSelect(row)}
-                      onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                      onOpen={() => openRow(row)}
                     />
                   );
                 })}
@@ -467,7 +624,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                         tgd={tgdFor(row.calories)}
                         selected={selection.has(row.key)}
                         onToggleSelect={() => toggleSelect(row)}
-                        onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                        onOpen={() => openRow(row)}
                       />
                     );
                   })}
@@ -495,7 +652,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                   <div className="space-y-2">
                     <div className="px-1 text-sm font-semibold text-slate-400">☀️ {MEAL_LABELS[mealType].toUpperCase()}</div>
                     {sameMealShown.map((f) => {
-                      const row = rowFromRecent(f);
+                      const row = rowFromLogged(f);
                       return (
                         <FoodRowCard
                           key={row.key}
@@ -503,7 +660,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                           tgd={tgdFor(row.calories)}
                           selected={selection.has(row.key)}
                           onToggleSelect={() => toggleSelect(row)}
-                          onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                          onOpen={() => openRow(row)}
                         />
                       );
                     })}
@@ -521,7 +678,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                   <div className="space-y-2">
                     <div className="px-1 text-sm font-semibold text-slate-400">🕐 TÜM DİĞER ÖĞÜNLER</div>
                     {recentOther.map((f) => {
-                      const row = rowFromRecent(f);
+                      const row = rowFromLogged(f);
                       return (
                         <FoodRowCard
                           key={row.key}
@@ -529,7 +686,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                           tgd={tgdFor(row.calories)}
                           selected={selection.has(row.key)}
                           onToggleSelect={() => toggleSelect(row)}
-                          onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                          onOpen={() => openRow(row)}
                         />
                       );
                     })}
@@ -546,7 +703,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
               <Card className="text-sm text-slate-400">Sık yediğin besinler burada görünecek.</Card>
             ) : (
               frequent.map((f) => {
-                const row = rowFromFrequent(f);
+                const row = rowFromLogged(f);
                 return (
                   <FoodRowCard
                     key={row.key}
@@ -554,7 +711,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
                     tgd={tgdFor(row.calories)}
                     selected={selection.has(row.key)}
                     onToggleSelect={() => toggleSelect(row)}
-                    onOpen={() => setOpened({ food: row.food, grams: row.grams })}
+                    onOpen={() => openRow(row)}
                   />
                 );
               })
