@@ -103,7 +103,7 @@ export interface FoodItem {
   proteinPer100g: number;
   carbsPer100g: number;
   fatPer100g: number;
-  source: 'openfoodfacts' | 'custom' | 'ai';
+  source: 'builtin' | 'openfoodfacts' | 'custom' | 'ai';
   servings?: Serving[];
 }
 

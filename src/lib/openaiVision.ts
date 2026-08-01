@@ -27,6 +27,23 @@ export interface AiFoodItem {
   unitGrams?: number;
   /** Modelin bu öğe için kendi bildirdiği güven değeri (0–1). */
   confidence?: number;
+  /** Yalnızca arayüzde kullanılan, 100 g başına sabit taban. Gram değiştikçe besin değerleri
+   * hep bu tabandan yeniden hesaplanır; böylece art arda yapılan düzenlemelerde yuvarlama
+   * hatası birikmez. Kullanıcı kalori/makroyu elle değiştirince temizlenir, API'ye gönderilmez. */
+  per100?: { calories: number; proteinG: number; carbsG: number; fatG: number };
+}
+
+/** Öğenin 100 g başına değerleri — kaydedilmiş taban varsa o, yoksa mevcut değerlerden türetilir. */
+export function itemPer100(it: AiFoodItem): NonNullable<AiFoodItem['per100']> {
+  if (it.per100) return it.per100;
+  if (!(it.grams > 0)) return { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 };
+  const k = 100 / it.grams;
+  return {
+    calories: it.calories * k,
+    proteinG: it.proteinG * k,
+    carbsG: it.carbsG * k,
+    fatG: it.fatG * k,
+  };
 }
 
 /** Bu eşiğin altındaki öğeler kullanıcıya "kontrol et" diye işaretlenir. */
