@@ -25,7 +25,12 @@ export interface AiFoodItem {
   unitLabel?: string;
   unitCount?: number;
   unitGrams?: number;
+  /** Modelin bu öğe için kendi bildirdiği güven değeri (0–1). */
+  confidence?: number;
 }
+
+/** Bu eşiğin altındaki öğeler kullanıcıya "kontrol et" diye işaretlenir. */
+export const LOW_CONFIDENCE = 0.6;
 
 export interface AiChatTurn {
   reply: string;
@@ -39,7 +44,31 @@ export interface ChatMessage {
   content: string | ChatContentPart[];
 }
 
-const MODEL = 'gpt-4o-mini';
+const MODEL_STORAGE = 'fittakip_openai_model';
+
+export interface AiModelOption {
+  id: string;
+  label: string;
+  desc: string;
+}
+
+/** Kullanılabilir görsel modeller. Maliyet kullanıcının kendi OpenAI hesabından çıktığı için
+ * seçim ona bırakılıyor. */
+export const AI_MODELS: AiModelOption[] = [
+  { id: 'gpt-4o-mini', label: 'Hızlı', desc: 'Düşük maliyet, günlük kullanım için yeterli' },
+  { id: 'gpt-4o', label: 'Hassas', desc: 'Porsiyon tahmininde daha isabetli, birkaç kat maliyetli' },
+];
+
+export const DEFAULT_MODEL = AI_MODELS[0].id;
+
+export function getAiModel(): string {
+  const saved = localStorage.getItem(MODEL_STORAGE);
+  return AI_MODELS.some((m) => m.id === saved) ? saved! : DEFAULT_MODEL;
+}
+
+export function setAiModel(id: string) {
+  localStorage.setItem(MODEL_STORAGE, id);
+}
 
 const SYSTEM_PROMPT =
   'Sen bir beslenme uzmanısın. Kullanıcı sana ya bir tabak/yemek fotoğrafı ya da yediği yemeğin yazılı bir ' +
@@ -59,9 +88,13 @@ const SYSTEM_PROMPT =
   'kaç birim olduğunu ve "unitGrams" alanına BİR birimin gram karşılığını yaz; ölçülemiyorsa (pilav, salata, ' +
   'kıyma gibi) bu üç alanı null bırak. estimatedGrams her durumda dolu olmalı ve birim verdiysen ' +
   'unitCount × unitGrams ile tutarlı olmalı. HER ZAMAN sadece şu şekilde bir JSON nesnesi döndür, başka ' +
+  'Her öğe için "confidence" alanına 0 ile 1 arasında bir güven değeri yaz: besini net tanıyıp porsiyonu ' +
+  'rahat kestirebiliyorsan yüksek (0.8+), tabakta üst üste binmiş/kısmen görünen ya da hangi besin olduğundan ' +
+  'emin olamadığın durumlarda düşük (0.5 altı) ver. Abartma, dürüst ol. ' +
+  'HER ZAMAN sadece şu şekilde bir JSON nesnesi döndür, başka ' +
   'hiçbir şey yazma: {"reply": kullanıcıya kısa Türkçe yanıtın (1 cümle), "items": [{"name": Türkçe besin ' +
   'adı, "estimatedGrams": sayı, "calories": sayı, "proteinG": sayı, "carbsG": sayı, "fatG": sayı, ' +
-  '"unit": metin|null, "unitCount": sayı|null, "unitGrams": sayı|null}, ...]}';
+  '"unit": metin|null, "unitCount": sayı|null, "unitGrams": sayı|null, "confidence": 0-1 arası sayı}, ...]}';
 
 function num(v: unknown): number {
   return typeof v === 'number' && isFinite(v) ? Math.max(0, v) : 0;
@@ -124,7 +157,7 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
     // Düşük temperature: bu bir yaratıcılık değil tahmin işi — aynı fotoğrafın her analizde
     // benzer gramajlar vermesi isteniyor.
     body: JSON.stringify({
-      model: MODEL,
+      model: getAiModel(),
       response_format: { type: 'json_object' },
       max_tokens: 700,
       temperature: 0.2,
@@ -156,6 +189,7 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
       carbsG: Math.round(num(it.carbsG) * 10) / 10,
       fatG: Math.round(num(it.fatG) * 10) / 10,
     });
+    const rawConfidence = typeof it.confidence === 'number' && isFinite(it.confidence) ? it.confidence : undefined;
     return {
       name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin',
       grams,
@@ -164,6 +198,7 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
       carbsG: macros.carbsG,
       fatG: macros.fatG,
       ...(hasUnit ? { unitLabel, unitCount, unitGrams } : {}),
+      ...(rawConfidence != null ? { confidence: Math.min(1, Math.max(0, rawConfidence)) } : {}),
     };
   });
   if (items.length === 0) throw new Error('empty-response');
@@ -216,6 +251,7 @@ export function sendCorrection(
             unit: it.unitLabel ?? null,
             unitCount: it.unitCount ?? null,
             unitGrams: it.unitGrams ?? null,
+            confidence: it.confidence ?? null,
           })),
         }),
       };

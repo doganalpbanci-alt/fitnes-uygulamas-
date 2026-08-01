@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
-import { sendCorrection, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
+import { LOW_CONFIDENCE, sendCorrection, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
 import { Button, Card } from '../components/ui';
 
 interface ChatLogEntry {
@@ -142,8 +142,16 @@ export default function FoodItemsReview({
       <div className="px-1 text-xs text-slate-400">
         AI {items.length} öğe tespit etti — her birini kontrol et, gerekirse düzelt ya da kaldır.
       </div>
-      {items.map((it, i) => (
-        <Card key={i} className="space-y-2">
+      {items.map((it, i) => {
+        const unsure = it.confidence != null && it.confidence < LOW_CONFIDENCE;
+        return (
+        <Card key={i} className={`space-y-2 ${unsure ? '!border-amber-400/30' : ''}`}>
+          {unsure && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-300">
+              <span>⚠️</span>
+              <span>AI bu öğeden emin değil (%{Math.round(it.confidence! * 100)}) — kontrol et</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input
               value={it.name}
@@ -235,7 +243,8 @@ export default function FoodItemsReview({
             </label>
           </div>
         </Card>
-      ))}
+        );
+      })}
 
       <Button variant="ghost" className="w-full !py-2 text-sm" onClick={addItem}>
         + Öğe Ekle

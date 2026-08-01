@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { db } from '../db';
 import { weightIncrement } from '../lib/overload';
-import { clearOpenAiKey, getOpenAiKey, setOpenAiKey } from '../lib/openaiVision';
+import { AI_MODELS, clearOpenAiKey, getAiModel, getOpenAiKey, setAiModel, setOpenAiKey } from '../lib/openaiVision';
 import { Button, Card, ScreenHeader } from '../components/ui';
 
 export default function Settings() {
@@ -11,6 +11,12 @@ export default function Settings() {
   const [hasAiKey, setHasAiKey] = useState(() => !!getOpenAiKey());
   const [aiKeyInput, setAiKeyInput] = useState('');
   const [howToOpen, setHowToOpen] = useState(false);
+  const [aiModel, setAiModelState] = useState(() => getAiModel());
+
+  const chooseModel = (id: string) => {
+    setAiModel(id);
+    setAiModelState(id);
+  };
 
   const exportData = async () => {
     const data = {
@@ -215,12 +221,34 @@ export default function Settings() {
             </a>
           </div>
           {hasAiKey ? (
-            <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2.5">
-              <span className="text-sm text-emerald-300">✓ Anahtar kayıtlı</span>
-              <Button variant="ghost" className="!py-1.5 text-sm text-rose-400" onClick={removeAiKey}>
-                Kaldır
-              </Button>
-            </div>
+            <>
+              <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2.5">
+                <span className="text-sm text-emerald-300">✓ Anahtar kayıtlı</span>
+                <Button variant="ghost" className="!py-1.5 text-sm text-rose-400" onClick={removeAiKey}>
+                  Kaldır
+                </Button>
+              </div>
+              <div className="space-y-1.5 pt-1">
+                <div className="text-xs text-slate-400">Analiz modeli</div>
+                {AI_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => chooseModel(m.id)}
+                    className={`btn-tap flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${
+                      aiModel === m.id
+                        ? 'border-emerald-400/50 bg-gradient-to-br from-emerald-400/15 to-emerald-500/5'
+                        : 'border-white/[0.06] bg-white/[0.02]'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold">{m.label}</div>
+                      <div className="text-xs text-slate-400">{m.desc}</div>
+                    </div>
+                    {aiModel === m.id && <span className="shrink-0 text-emerald-400">✓</span>}
+                  </button>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="flex gap-2">
               <input
