@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
+import { BUILTIN_FOODS } from '../data/foods';
 import { useNutritionTargets } from '../lib/useTargets';
 import { searchFoods, type OFFProduct } from '../lib/openFoodFacts';
 import {
@@ -8,6 +9,7 @@ import {
   computeRecentFoods,
   dedupeFoodsByName,
   fuzzyFilterSort,
+  fuzzyScoreWithAliases,
   type FrequentFood,
   type RecentFood,
 } from '../lib/foodSearch';
@@ -18,6 +20,7 @@ import PhotoFoodScan from './PhotoFoodScan';
 import TextFoodScan from './TextFoodScan';
 
 const SOURCE_ICON: Record<FoodItem['source'], string> = {
+  builtin: '🥗',
   openfoodfacts: '🌐',
   custom: '✏️',
   ai: '📷',
@@ -39,14 +42,19 @@ function servingLabelFor(grams: number, unitLabel?: string, unitCount?: number):
   return `${Math.round(grams)} g`;
 }
 
-function rowFromFoodItem(food: FoodItem, grams = 100): FoodRow {
-  const factor = grams / 100;
+/** Besinin doğal bir ölçüsü varsa satırı onunla göster ("1 dilim · 30 g"), yoksa 100 g üzerinden. */
+function rowFromFoodItem(food: FoodItem, grams?: number): FoodRow {
+  const first = normalizeServings(food.servings ?? [])[0];
+  const useServing = grams == null && first != null;
+  const g = useServing ? first.grams : grams ?? 100;
+  const factor = g / 100;
   return {
     key: food.id,
     food,
-    grams,
+    grams: g,
     calories: Math.round(food.caloriesPer100g * factor),
-    servingLabel: `${Math.round(grams)} g`,
+    servingLabel: useServing ? `1 ${first.label} · ${Math.round(g)} g` : `${Math.round(g)} g`,
+    unitLabel: useServing ? first.label : undefined,
   };
 }
 
@@ -466,6 +474,18 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
     () => (q.length >= 2 ? fuzzyFilterSort(q, dedupeFoodsByName(myFoods), (f) => f.name, 0.3).slice(0, 8) : []),
     [q, myFoods],
   );
+  // Uygulamayla gelen Türkçe veritabanı: çevrimdışı ve anında — internete/debounce'a gerek yok.
+  // Kullanıcının kendi kayıtlarında zaten olanlar (ör. birim eklediği) yukarıda listelendiği için
+  // burada tekrar gösterilmez.
+  const builtinMatches = useMemo(() => {
+    if (q.length < 2) return [];
+    return BUILTIN_FOODS.filter((f) => !foodById.has(f.id))
+      .map((f) => ({ f, score: fuzzyScoreWithAliases(q, f.name, f.aliases) }))
+      .filter((x) => x.score >= 0.45)
+      .sort((a, b) => b.score - a.score || a.f.name.length - b.f.name.length)
+      .slice(0, 20)
+      .map((x) => x.f);
+  }, [q, foodById]);
   const rankedResults = useMemo(() => fuzzyFilterSort(q, results, (p) => p.name, 0), [q, results]);
 
   useEffect(() => {
@@ -502,7 +522,13 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
     const date = todayStr();
     const loggedAt = new Date().toISOString();
     for (const row of selection.values()) {
-      await db.foods.put(row.food);
+      // Sık/son yenenler satırları günlükten türetildiği için birim tanımı taşımaz; kayıtlı besin
+      // varsa onu koru, yoksa satırdakini kaydet — aksi halde tanımlı birimler silinirdi.
+      const stored = foodById.get(row.food.id);
+      await db.foods.put(stored ?? row.food);
+      const serving = normalizeServings((stored ?? row.food).servings ?? []).find(
+        (s) => s.label === row.unitLabel,
+      );
       const factor = row.grams / 100;
       await db.diaryEntries.add({
         date,
@@ -515,6 +541,9 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
         carbsG: Math.round(row.food.carbsPer100g * factor * 10) / 10,
         fatG: Math.round(row.food.fatPer100g * factor * 10) / 10,
         loggedAt,
+        ...(serving
+          ? { unitLabel: serving.label, unitCount: Math.round((row.grams / serving.grams) * 100) / 100, unitGrams: serving.grams }
+          : {}),
       });
     }
     back();
@@ -526,13 +555,15 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
         food={opened.food}
         mealType={mealType}
         initialGrams={opened.grams}
+        initialUnit={opened.unitLabel}
         onBack={() => setOpened(null)}
         onDone={back}
       />
     );
   }
 
-  const showEmptyState = q.length >= 2 && !loading && localMatches.length === 0 && rankedResults.length === 0 && !error;
+  const hasAnyMatch = localMatches.length > 0 || builtinMatches.length > 0 || rankedResults.length > 0;
+  const showEmptyState = q.length >= 2 && !loading && !hasAnyMatch && !error;
   const sameMealShown = showAllSameMeal ? recentSameMeal : recentSameMeal.slice(0, 4);
 
   return (
@@ -610,9 +641,28 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
               </div>
             )}
 
+            {builtinMatches.length > 0 && (
+              <div className="space-y-2">
+                <div className="px-1 text-sm font-semibold text-slate-400">🥗 Besin Veritabanı</div>
+                {builtinMatches.map((f) => {
+                  const row = rowFromFoodItem(f);
+                  return (
+                    <FoodRowCard
+                      key={row.key}
+                      row={row}
+                      tgd={tgdFor(row.calories)}
+                      selected={selection.has(row.key)}
+                      onToggleSelect={() => toggleSelect(row)}
+                      onOpen={() => openRow(row)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
             {q.length >= 2 && (loading || rankedResults.length > 0) && (
               <div className="space-y-2">
-                <div className="px-1 text-sm font-semibold text-slate-400">🌐 Besin Veritabanı</div>
+                <div className="px-1 text-sm font-semibold text-slate-400">🌐 Paketli / Markalı Ürünler</div>
                 {loading && <div className="py-2 text-center text-sm text-slate-400">Aranıyor…</div>}
                 {!loading &&
                   rankedResults.map((p) => {
@@ -631,7 +681,12 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
               </div>
             )}
 
-            {error && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
+            {error && hasAnyMatch && (
+              <div className="py-1 text-center text-xs text-slate-500">
+                Markalı ürün araması yapılamadı (internet yok) — yukarıdaki sonuçlar çevrimdışı çalışır.
+              </div>
+            )}
+            {error && !hasAnyMatch && <div className="py-2 text-center text-sm text-rose-400">{error}</div>}
             {showEmptyState && (
               <div className="py-2 text-center text-sm text-slate-400">
                 Sonuç bulunamadı. Yukarıdaki "AI'a Anlat" ile de ekleyebilirsin.

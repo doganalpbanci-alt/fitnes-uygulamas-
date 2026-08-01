@@ -13,6 +13,36 @@ function normalize(s: string): string {
     .trim();
 }
 
+/** Türkçe eklerin en yaygın olanları — en uzundan kısaya doğru denenir. */
+const SUFFIXES = [
+  'larimiz', 'lerimiz', 'lariniz', 'leriniz',
+  'lardan', 'lerden', 'larin', 'lerin', 'lari', 'leri', 'lara', 'lere',
+  'lar', 'ler', 'imiz', 'iniz', 'dan', 'den', 'tan', 'ten',
+  'nin', 'nun', 'in', 'un', 'da', 'de', 'ta', 'te', 'ya', 'ye',
+  'si', 'su', 'sı', 'i', 'u', 'a', 'e',
+];
+
+/** Türkçedeki ünsüz yumuşaması: "ekmek" → "ekmeği", "fıstık" → "fıstığı".
+ * Ek atıldıktan sonra sondaki yumuşamış ünsüzü sertine geri çevirir ki kök eşleşsin. */
+const UNSOFTEN: Record<string, string> = { g: 'k', b: 'p', c: 'c', d: 't' };
+
+/** Kelimeyi kabaca köküne indirger: "fistigi" → "fistik", "yumurtasi" → "yumurta".
+ * Türkçe sondan eklemeli olduğu için "fıstık" araması "Antep fıstığı" ile eşleşmiyordu.
+ * En fazla iki ek atılır ve kök 3 harften kısalırsa değişiklik geri alınır — böylece
+ * kısa kelimeler ("bal", "et") yanlışlıkla kırpılmaz. */
+export function turkishStem(word: string): string {
+  let w = word;
+  for (let round = 0; round < 2; round++) {
+    const suffix = SUFFIXES.find((s) => w.length - s.length >= 3 && w.endsWith(s));
+    if (!suffix) break;
+    w = w.slice(0, -suffix.length);
+  }
+  if (w === word) return w;
+  const last = w[w.length - 1];
+  if (UNSOFTEN[last] && UNSOFTEN[last] !== last) w = w.slice(0, -1) + UNSOFTEN[last];
+  return w;
+}
+
 function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
@@ -35,6 +65,11 @@ function levenshtein(a: string, b: string): number {
 function wordSimilarity(qw: string, tw: string): number {
   if (qw === tw) return 1;
   if (tw.includes(qw) || qw.includes(tw)) return 0.9;
+  // Türkçe ek farkını ("fistik" ↔ "fistigi") yazım hatası saymadan eşleştir.
+  const qs = turkishStem(qw);
+  const ts = turkishStem(tw);
+  if (qs === ts) return 0.95;
+  if (ts.includes(qs) || qs.includes(ts)) return 0.85;
   if (qw.length <= 2 || tw.length <= 2) return 0;
   const dist = levenshtein(qw, tw);
   const maxLen = Math.max(qw.length, tw.length);
@@ -62,6 +97,15 @@ export function fuzzyScore(query: string, target: string): number {
   const perWordScores = qWords.map((qw) => Math.max(0, ...tWords.map((tw) => wordSimilarity(qw, tw))));
   const avg = perWordScores.reduce((a, b) => a + b, 0) / perWordScores.length;
   return avg > 0 ? 0.35 + avg * 0.5 : 0;
+}
+
+/** Ada ve eş anlamlılara birlikte bakan skor. Ad üzerinden eşleşme her zaman eş anlamlı
+ * üzerinden eşleşmeden önce gelsin diye eş anlamlı skorları hafifçe kısılır. */
+export function fuzzyScoreWithAliases(query: string, name: string, aliases?: string[]): number {
+  const base = fuzzyScore(query, name);
+  if (!aliases?.length) return base;
+  const best = Math.max(...aliases.map((a) => fuzzyScore(query, a)));
+  return Math.max(base, best * 0.9);
 }
 
 export function fuzzyFilterSort<T>(query: string, items: T[], getText: (item: T) => string, minScore = 0.3): T[] {

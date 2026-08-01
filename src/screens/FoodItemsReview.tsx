@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
-import { LOW_CONFIDENCE, sendCorrection, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
+import { LOW_CONFIDENCE, itemPer100, sendCorrection, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
 import { Button, Card } from '../components/ui';
 
 interface ChatLogEntry {
@@ -64,20 +64,35 @@ export default function FoodItemsReview({
     onItemsChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   };
 
+  /** Gram değişince kalori ve makrolar da orantılı olarak yeniden hesaplanır — 100 g başına sabit
+   * taban üzerinden, böylece art arda düzenlemede yuvarlama hatası birikmez. Birim tanımlıysa
+   * adet de gramla birlikte güncellenir. */
+  const updateGrams = (i: number, newGrams: number) => {
+    const it = items[i];
+    const base = itemPer100(it);
+    const k = newGrams / 100;
+    updateItem(i, {
+      grams: newGrams,
+      per100: base,
+      calories: Math.round(base.calories * k),
+      proteinG: Math.round(base.proteinG * k * 10) / 10,
+      carbsG: Math.round(base.carbsG * k * 10) / 10,
+      fatG: Math.round(base.fatG * k * 10) / 10,
+      ...(it.unitGrams ? { unitCount: Math.round((newGrams / it.unitGrams) * 100) / 100 } : {}),
+    });
+  };
+
   /** Birim adedi değişince gram ve besin değerleri orantılı olarak yeniden hesaplanır. */
   const updateUnitCount = (i: number, count: number) => {
     const it = items[i];
     if (!it.unitGrams || !(count > 0)) return;
-    const newGrams = Math.round(count * it.unitGrams * 10) / 10;
-    const k = it.grams > 0 ? newGrams / it.grams : 1;
-    updateItem(i, {
-      unitCount: count,
-      grams: newGrams,
-      calories: Math.round(it.calories * k),
-      proteinG: Math.round(it.proteinG * k * 10) / 10,
-      carbsG: Math.round(it.carbsG * k * 10) / 10,
-      fatG: Math.round(it.fatG * k * 10) / 10,
-    });
+    updateGrams(i, Math.round(count * it.unitGrams * 10) / 10);
+  };
+
+  /** Kalori/makro elle değiştirilince taban geçersizleşir; sonraki gram düzenlemesi yeni
+   * değerlerden yeni bir taban türetir. */
+  const updateMacro = (i: number, patch: Partial<AiFoodItem>) => {
+    updateItem(i, { ...patch, per100: undefined });
   };
 
   const removeItem = (i: number) => {
@@ -106,15 +121,17 @@ export default function FoodItemsReview({
     const loggedAt = new Date().toISOString();
     for (let i = 0; i < validItems.length; i++) {
       const it = validItems[i];
-      const factor = it.grams > 0 ? 100 / it.grams : 1;
+      // Gram düzenlendiyse taban zaten tam hassasiyetle saklanmış olur; yuvarlanmış ekran
+      // değerlerinden geri hesaplamak yerine onu kullan.
+      const base = itemPer100(it);
       const hasUnit = !!it.unitLabel && !!it.unitGrams && it.unitCount != null;
       const food: FoodItem = {
         id: `ai_${now}_${i}`,
         name: it.name,
-        caloriesPer100g: Math.round(it.calories * factor),
-        proteinPer100g: Math.round(it.proteinG * factor * 10) / 10,
-        carbsPer100g: Math.round(it.carbsG * factor * 10) / 10,
-        fatPer100g: Math.round(it.fatG * factor * 10) / 10,
+        caloriesPer100g: Math.round(base.calories),
+        proteinPer100g: Math.round(base.proteinG * 10) / 10,
+        carbsPer100g: Math.round(base.carbsG * 10) / 10,
+        fatPer100g: Math.round(base.fatG * 10) / 10,
         source: 'ai',
         // Birimi besinle birlikte sakla ki sonraki eklemelerde de adet/dilim seçilebilsin.
         ...(hasUnit ? { servings: [{ label: it.unitLabel!, grams: it.unitGrams! }] } : {}),
@@ -192,7 +209,7 @@ export default function FoodItemsReview({
                 inputMode="numeric"
                 min={0}
                 value={it.grams}
-                onChange={(e) => updateItem(i, { grams: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(e) => updateGrams(i, Math.max(0, Number(e.target.value) || 0))}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">gram</div>
@@ -203,7 +220,7 @@ export default function FoodItemsReview({
                 inputMode="numeric"
                 min={0}
                 value={it.calories}
-                onChange={(e) => updateItem(i, { calories: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(e) => updateMacro(i, { calories: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold text-emerald-400"
               />
               <div className="text-center text-[9px] text-slate-400">kcal</div>
@@ -214,7 +231,7 @@ export default function FoodItemsReview({
                 inputMode="decimal"
                 min={0}
                 value={it.proteinG}
-                onChange={(e) => updateItem(i, { proteinG: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(e) => updateMacro(i, { proteinG: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">P g</div>
@@ -225,7 +242,7 @@ export default function FoodItemsReview({
                 inputMode="decimal"
                 min={0}
                 value={it.carbsG}
-                onChange={(e) => updateItem(i, { carbsG: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(e) => updateMacro(i, { carbsG: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">K g</div>
@@ -236,7 +253,7 @@ export default function FoodItemsReview({
                 inputMode="decimal"
                 min={0}
                 value={it.fatG}
-                onChange={(e) => updateItem(i, { fatG: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(e) => updateMacro(i, { fatG: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">Y g</div>
