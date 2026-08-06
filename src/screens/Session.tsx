@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, todayStr, type SessionEntry, type WorkoutSession, type WorkoutTemplate } from '../db';
+import {
+  db,
+  todayStr,
+  type Exercise,
+  type SessionEntry,
+  type TemplateExercise,
+  type WorkoutSession,
+  type WorkoutTemplate,
+} from '../db';
 import { checkOverload } from '../lib/overload';
 import { getExerciseRecords, lastSetPerformance } from '../lib/records';
 import { unlockAudio, playBeep } from '../lib/beep';
 import { fmtDuration } from '../lib/format';
 import { useNav } from '../store';
 import { Button, Card, ExerciseThumb, OverloadBadge, ScreenHeader } from '../components/ui';
+import ExercisePicker from '../components/ExercisePicker';
 
 function useNow(intervalMs = 1000) {
   const [now, setNow] = useState(() => Date.now());
@@ -77,6 +86,43 @@ function RestTimerBar({ remaining, total, onSkip }: { remaining: number; total: 
   );
 }
 
+/** Antrenman sırasında hareket değiştirilmiş/kaldırılmışsa, bitirirken rutinin kalıcı olarak
+ * güncellensin mi yoksa bu seferlik mi kullanılsın diye sorar. */
+function RoutineChangeDialog({
+  templateName,
+  onKeepUpdated,
+  onKeepOriginal,
+  onCancel,
+}: {
+  templateName: string;
+  onKeepUpdated: () => void;
+  onKeepOriginal: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+      <div className="w-full max-w-sm space-y-3 rounded-t-2xl border border-white/10 bg-[#0b0f1c] p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] sm:rounded-2xl sm:pb-5">
+        <div className="text-lg font-bold">Hareketler değişti</div>
+        <div className="text-sm text-slate-400">
+          "{templateName}" rutininde bu antrenman sırasında değişiklik yaptın. Bu yeni hâli rutine kalıcı
+          olarak kaydedeyim mi, yoksa önceki rutin aynı kalsın mı?
+        </div>
+        <div className="space-y-2 pt-1">
+          <Button className="w-full" onClick={onKeepUpdated}>
+            Rutini Bu Hâliyle Güncelle
+          </Button>
+          <Button variant="secondary" className="w-full" onClick={onKeepOriginal}>
+            Hayır, Önceki Rutini Koru
+          </Button>
+          <button onClick={onCancel} className="w-full py-1.5 text-center text-sm text-slate-500">
+            Vazgeç
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Session({ templateId }: { templateId: number }) {
   const back = useNav((s) => s.back);
   const push = useNav((s) => s.push);
@@ -94,6 +140,9 @@ export default function Session({ templateId }: { templateId: number }) {
   // an gerçek saatten türetince (aşağıda restRemaining), arka plandan dönüldüğünde sayaç
   // gerçekte geçen süreyi anında yansıtıyor.
   const [restEndAt, setRestEndAt] = useState<number | null>(null);
+  // Antrenman sırasında bir hareket değiştiriliyorsa hangi satırın (index) değiştirileceğini tutar.
+  const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
+  const [showRoutineDialog, setShowRoutineDialog] = useState(false);
   const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? [];
   const exMap = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
   const pastSessions =
@@ -149,6 +198,33 @@ export default function Session({ templateId }: { templateId: number }) {
     setConfirmed((prev) => prev.map((row, i) => (i === ei ? row.filter((_, j) => j !== si) : row)));
   };
 
+  /** Bir hareketi antrenman sırasında başka bir hareketle değiştirir. Girilmiş set değerleri
+   * yeni hareket için anlamlı olmadığından temizlenir, set sayısı korunur. */
+  const swapExercise = (ei: number, ex: Exercise) => {
+    const isCardio = ex.type === 'cardio';
+    setEntries((prev) =>
+      prev.map((e, i) => {
+        if (i !== ei) return e;
+        // Kardiyodan direnç hareketine geçildiyse (repMin/repMax 0 gelir) makul bir varsayılana dön.
+        const hadRange = e.repMin > 0 || e.repMax > 0;
+        return {
+          exerciseId: ex.id,
+          repMin: isCardio ? 0 : hadRange ? e.repMin : 8,
+          repMax: isCardio ? 0 : hadRange ? e.repMax : 12,
+          sets: e.sets.map(() => (isCardio ? { durationMin: undefined } : { reps: undefined, weightKg: undefined })),
+        };
+      }),
+    );
+    setConfirmed((prev) => prev.map((row, i) => (i === ei ? row.map(() => false) : row)));
+    setSwappingIndex(null);
+  };
+
+  const removeExercise = (ei: number) => {
+    if (!confirm('Bu hareket antrenmandan kaldırılsın mı? Girilen setler silinecek.')) return;
+    setEntries((prev) => prev.filter((_, i) => i !== ei));
+    setConfirmed((prev) => prev.filter((_, i) => i !== ei));
+  };
+
   const toggleConfirm = (ei: number, si: number) => {
     const willConfirm = !(confirmed[ei]?.[si] ?? false);
     setConfirmed((prev) => prev.map((row, i) => (i === ei ? row.map((c, j) => (j === si ? !c : c)) : row)));
@@ -178,18 +254,52 @@ export default function Session({ templateId }: { templateId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restRemaining, restEndAt]);
 
-  const finish = async () => {
-    if (!template) return;
-    const cleaned = entries
+  const getCleaned = () =>
+    entries
       .map((e) => ({
         ...e,
         sets: e.sets.filter((s) => s.reps != null || s.durationMin != null),
       }))
       .filter((e) => e.sets.length > 0);
-    if (cleaned.length === 0) {
-      if (!confirm('Hiç set girilmedi. Çıkmak istiyor musun?')) return;
-      return back();
-    }
+
+  /** Antrenman sırasında hareket değiştirilmiş ya da kaldırılmışsa true döner — bitirirken
+   * kullanıcıya rutini güncellemek isteyip istemediği sorulur. */
+  const routineChanged = () => {
+    if (!template) return false;
+    const origIds = template.exercises.map((te) => te.exerciseId);
+    const curIds = entries.map((e) => e.exerciseId);
+    if (origIds.length !== curIds.length) return true;
+    return origIds.some((id, i) => id !== curIds[i]);
+  };
+
+  /** Bu antrenumdaki güncel hareket/set/ağırlık bilgilerinden yeni bir şablon listesi türetir —
+   * kullanıcı "rutini güncelle" derse bu, sonraki antrenmanların varsayılanı olur. */
+  const buildUpdatedTemplateExercises = (): TemplateExercise[] =>
+    entries.map((e, ei) => {
+      const isCardio = exMap.get(e.exerciseId)?.type === 'cardio';
+      // Setler bu oturumda dokunulmamış olsa bile önceki oturumdan/varsayılandan gelen bir
+      // ağırlık/süre taşıyabilir (satırlar boş görünse de önceden dolduruluyor). Bu yüzden
+      // "en son" değeri, ✓ ile açıkça onaylanmış setler arasından seçiyoruz — hiç set
+      // onaylanmadıysa (ör. sadece hareket değiştirilip hiç girdi yapılmadıysa) mevcut
+      // değerlere düşüyoruz.
+      const confirmedSets = e.sets.filter((_, si) => confirmed[ei]?.[si]);
+      const source = confirmedSets.length ? confirmedSets : e.sets;
+      if (isCardio) {
+        const lastDuration = [...source].reverse().find((s) => s.durationMin != null)?.durationMin;
+        return { exerciseId: e.exerciseId, targetSets: 1, repMin: 0, repMax: 0, targetDurationMin: lastDuration };
+      }
+      const lastWeight = [...source].reverse().find((s) => s.weightKg != null)?.weightKg;
+      return {
+        exerciseId: e.exerciseId,
+        targetSets: e.sets.length || 1,
+        repMin: e.repMin,
+        repMax: e.repMax,
+        startWeightKg: lastWeight,
+      };
+    });
+
+  const saveSession = async (cleaned: SessionEntry[]) => {
+    if (!template) return;
     const session: WorkoutSession = {
       templateId,
       templateName: template.name,
@@ -200,6 +310,31 @@ export default function Session({ templateId }: { templateId: number }) {
     };
     const id = await db.sessions.add(session);
     push({ t: 'sessionSummary', sessionId: id });
+  };
+
+  const finish = async () => {
+    if (!template) return;
+    const cleaned = getCleaned();
+    if (cleaned.length === 0) {
+      if (!confirm('Hiç set girilmedi. Çıkmak istiyor musun?')) return;
+      return back();
+    }
+    if (routineChanged()) {
+      setShowRoutineDialog(true);
+      return;
+    }
+    await saveSession(cleaned);
+  };
+
+  const confirmKeepUpdatedRoutine = async () => {
+    await db.templates.update(templateId, { exercises: buildUpdatedTemplateExercises() });
+    setShowRoutineDialog(false);
+    await saveSession(getCleaned());
+  };
+
+  const confirmKeepOriginalRoutine = async () => {
+    setShowRoutineDialog(false);
+    await saveSession(getCleaned());
   };
 
   if (!template) return null;
@@ -292,6 +427,22 @@ export default function Session({ templateId }: { templateId: number }) {
                       Hedef: {entry.sets.length} set × {entry.repMin}–{entry.repMax} tekrar
                     </div>
                   )}
+                </div>
+                <div className="flex shrink-0 gap-1 text-slate-400">
+                  <button
+                    onClick={() => setSwappingIndex(ei)}
+                    aria-label="Hareketi değiştir"
+                    className="rounded p-1.5 active:bg-white/10"
+                  >
+                    🔁
+                  </button>
+                  <button
+                    onClick={() => removeExercise(ei)}
+                    aria-label="Hareketi kaldır"
+                    className="rounded p-1.5 text-rose-400 active:bg-white/10"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -431,6 +582,23 @@ export default function Session({ templateId }: { templateId: number }) {
       </div>
       {restActive && (
         <RestTimerBar remaining={restRemaining} total={restTotal} onSkip={() => setRestEndAt(null)} />
+      )}
+
+      {swappingIndex != null && (
+        <ExercisePicker
+          title="Hareketi Değiştir"
+          onClose={() => setSwappingIndex(null)}
+          onPick={(ex) => swapExercise(swappingIndex, ex)}
+        />
+      )}
+
+      {showRoutineDialog && (
+        <RoutineChangeDialog
+          templateName={template.name}
+          onKeepUpdated={confirmKeepUpdatedRoutine}
+          onKeepOriginal={confirmKeepOriginalRoutine}
+          onCancel={() => setShowRoutineDialog(false)}
+        />
       )}
     </div>
   );
