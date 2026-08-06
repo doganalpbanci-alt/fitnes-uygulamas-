@@ -12,7 +12,17 @@ function useNow(intervalMs = 1000) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
+    // Ekran kapanıp/arka plana alınıp geri dönüldüğünde tarayıcı setInterval'ı
+    // askıya alıyor; sekme tekrar görünür olduğu anda saati hemen güncel değere
+    // atlat, bir sonraki 1 sn'lik tick'i beklemeden doğru süre görünsün.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') setNow(Date.now());
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [intervalMs]);
   return now;
 }
@@ -78,7 +88,12 @@ export default function Session({ templateId }: { templateId: number }) {
   const [restSeconds, setRestSeconds] = useState(loadRestSeconds);
   const [customRestOpen, setCustomRestOpen] = useState(false);
   const [restTotal, setRestTotal] = useState(restSeconds);
-  const [restRemaining, setRestRemaining] = useState<number | null>(null);
+  // Kalan saniyeyi azaltarak saymak yerine bitiş zaman damgasını saklıyoruz: ekran
+  // kapanınca/uygulama arka plana alınınca tarayıcı setTimeout zincirini durdurabiliyor,
+  // bu da sayacın donmasına yol açıyordu. Bitişi mutlak zamana sabitleyip kalan süreyi her
+  // an gerçek saatten türetince (aşağıda restRemaining), arka plandan dönüldüğünde sayaç
+  // gerçekte geçen süreyi anında yansıtıyor.
+  const [restEndAt, setRestEndAt] = useState<number | null>(null);
   const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? [];
   const exMap = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
   const pastSessions =
@@ -140,9 +155,9 @@ export default function Session({ templateId }: { templateId: number }) {
     if (willConfirm) {
       unlockAudio();
       setRestTotal(restSeconds);
-      setRestRemaining(restSeconds);
+      setRestEndAt(Date.now() + restSeconds * 1000);
     } else {
-      setRestRemaining(null);
+      setRestEndAt(null);
     }
   };
 
@@ -151,16 +166,17 @@ export default function Session({ templateId }: { templateId: number }) {
     localStorage.setItem('restSeconds', String(v));
   };
 
+  // Kalan süre, azaltılan bir sayaç değil, bitiş zaman damgası ile şu anki gerçek saat
+  // arasındaki farktan hesaplanıyor — bu yüzden arka planda geçen süre de doğru sayılıyor.
+  const restRemaining = restEndAt != null ? Math.max(0, Math.ceil((restEndAt - now) / 1000)) : null;
+
   useEffect(() => {
-    if (restRemaining == null) return;
-    if (restRemaining <= 0) {
+    if (restEndAt != null && restRemaining === 0) {
       playBeep();
-      setRestRemaining(null);
-      return;
+      setRestEndAt(null);
     }
-    const id = setTimeout(() => setRestRemaining((r) => (r == null ? null : r - 1)), 1000);
-    return () => clearTimeout(id);
-  }, [restRemaining]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restRemaining, restEndAt]);
 
   const finish = async () => {
     if (!template) return;
@@ -414,7 +430,7 @@ export default function Session({ templateId }: { templateId: number }) {
         </Button>
       </div>
       {restActive && (
-        <RestTimerBar remaining={restRemaining} total={restTotal} onSkip={() => setRestRemaining(null)} />
+        <RestTimerBar remaining={restRemaining} total={restTotal} onSkip={() => setRestEndAt(null)} />
       )}
     </div>
   );
