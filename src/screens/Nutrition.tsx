@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, MEAL_LABELS, todayStr, type DiaryEntry, type MealType } from '../db';
+import { db, MEAL_LABELS, todayStr, type DiaryEntry, type FoodItem, type MealType } from '../db';
 import { useNutritionTargets } from '../lib/useTargets';
 import { per100Of, scaleTo, updateEntryGrams } from '../lib/diary';
 import { fmtQty, portionLabel } from '../lib/servings';
@@ -114,11 +114,160 @@ function MacroBar({ label, consumed, target, color }: { label: string; consumed:
   );
 }
 
+/** Bir öğünün tüm besinlerini, öğün-bazlı makro toplamıyla birlikte gösterip düzenlemeyi
+ * sağlayan detay ekranı — ana ekrandaki öğün satırına dokununca açılır. */
+function MealDetail({
+  meal,
+  entries,
+  foodMap,
+  onClose,
+  onAddFood,
+}: {
+  meal: MealType;
+  entries: DiaryEntry[];
+  foodMap: Map<string, FoodItem>;
+  onClose: () => void;
+  onAddFood: () => void;
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editGrams, setEditGrams] = useState('');
+
+  const totals = entries.reduce(
+    (acc, e) => ({
+      calories: acc.calories + e.calories,
+      proteinG: acc.proteinG + e.proteinG,
+      carbsG: acc.carbsG + e.carbsG,
+      fatG: acc.fatG + e.fatG,
+    }),
+    { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+  );
+
+  const removeEntry = async (id?: number) => {
+    if (id == null) return;
+    await db.diaryEntries.delete(id);
+  };
+
+  const startEdit = (e: DiaryEntry) => {
+    setEditingId(e.id ?? null);
+    setEditGrams(e.unitLabel && e.unitCount != null ? fmtQty(e.unitCount) : String(e.grams));
+  };
+
+  const editedGrams = (e: DiaryEntry) => {
+    const n = Math.max(0, Number(editGrams.replace(',', '.')) || 0);
+    return e.unitLabel && e.unitGrams ? n * e.unitGrams : n;
+  };
+
+  const saveEdit = async (e: DiaryEntry) => {
+    const g = editedGrams(e);
+    if (!(g > 0)) return;
+    const n = Math.max(0, Number(editGrams.replace(',', '.')) || 0);
+    await updateEntryGrams(e, per100Of(e, foodMap.get(e.foodId)), g, e.unitLabel ? n : undefined);
+    setEditingId(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex flex-col bg-[#070a14]">
+      <ScreenHeader title={`${MEAL_LABELS[meal]} Detayı`} onBack={onClose} />
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+        {entries.length > 0 && (
+          <Card className="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <div className="text-lg font-bold text-emerald-400">{totals.calories}</div>
+              <div className="text-[10px] text-slate-400">kcal</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{Math.round(totals.proteinG * 10) / 10}g</div>
+              <div className="text-[10px] text-slate-400">Protein</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{Math.round(totals.carbsG * 10) / 10}g</div>
+              <div className="text-[10px] text-slate-400">Karb.</div>
+            </div>
+            <div>
+              <div className="text-lg font-bold">{Math.round(totals.fatG * 10) / 10}g</div>
+              <div className="text-[10px] text-slate-400">Yağ</div>
+            </div>
+          </Card>
+        )}
+
+        <Card className="!p-0">
+          {entries.length === 0 && (
+            <div className="p-4 text-sm text-slate-400">Bu öğüne henüz besin eklenmedi.</div>
+          )}
+          {entries.map((e, i) => {
+            if (editingId === e.id) {
+              const byUnit = !!e.unitLabel && !!e.unitGrams;
+              const g = editedGrams(e);
+              const preview = scaleTo(per100Of(e, foodMap.get(e.foodId)), g);
+              return (
+                <div key={e.id} className="border-b border-white/[0.06] bg-white/[0.03] px-4 py-2.5 last:border-b-0">
+                  <div className="truncate text-sm font-medium">{e.foodName}</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={byUnit ? 0.5 : 1}
+                      autoFocus
+                      value={editGrams}
+                      onChange={(ev) => setEditGrams(ev.target.value)}
+                      onKeyDown={(ev) => ev.key === 'Enter' && saveEdit(e)}
+                      className="w-20 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1.5 text-center text-base font-bold"
+                      aria-label={byUnit ? e.unitLabel : 'Gram'}
+                    />
+                    <span className="text-xs text-slate-400">{byUnit ? e.unitLabel : 'g'}</span>
+                    <span className="flex-1 text-xs tabular-nums text-slate-400">
+                      → {preview.calories} kcal · P{preview.proteinG} K{preview.carbsG} Y{preview.fatG}
+                      {byUnit && <span className="text-slate-500"> · {Math.round(g)} g</span>}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <Button variant="secondary" className="flex-1 !py-1.5 !text-xs" onClick={() => setEditingId(null)}>
+                      İptal
+                    </Button>
+                    <Button className="flex-1 !py-1.5 !text-xs" disabled={!(g > 0)} onClick={() => saveEdit(e)}>
+                      Kaydet
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div
+                key={e.id}
+                className={`flex items-center justify-between gap-2 px-4 py-2.5 ${i > 0 ? 'border-t border-white/[0.06]' : ''}`}
+              >
+                <button onClick={() => startEdit(e)} className="min-w-0 flex-1 text-left">
+                  <div className="truncate text-sm font-medium">{e.foodName}</div>
+                  <div className="text-xs tabular-nums text-slate-400">
+                    {portionLabel(e)} · {e.calories} kcal · P{Math.round(e.proteinG * 10) / 10}
+                    <span className="ml-1 text-slate-600">✏️</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => removeEntry(e.id)}
+                  className="btn-tap -mr-1 rounded-lg p-2 text-slate-600 active:bg-white/10"
+                  aria-label="Kaydı sil"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </Card>
+
+        <Button className="w-full" onClick={onAddFood}>
+          + Besin Ekle
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Nutrition() {
   const push = useNav((s) => s.push);
   const [weeklyOpen, setWeeklyOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editGrams, setEditGrams] = useState('');
+  const [detailMeal, setDetailMeal] = useState<MealType | null>(null);
   const profile = useLiveQuery(() => db.profile.get(1), []);
   const foods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
   const foodMap = useMemo(() => new Map(foods.map((f) => [f.id, f])), [foods]);
@@ -147,31 +296,6 @@ export default function Nutrition() {
       ),
     [entries],
   );
-
-  const removeEntry = async (id?: number) => {
-    if (id == null) return;
-    await db.diaryEntries.delete(id);
-  };
-
-  const startEdit = (e: DiaryEntry) => {
-    setEditingId(e.id ?? null);
-    // Birimle eklendiyse birim adedini, değilse gramı düzenlet.
-    setEditGrams(e.unitLabel && e.unitCount != null ? fmtQty(e.unitCount) : String(e.grams));
-  };
-
-  /** Düzenleme alanına girilen değeri grama çevirir (birimle eklenmiş kayıtlarda adet × birim gramı). */
-  const editedGrams = (e: DiaryEntry) => {
-    const n = Math.max(0, Number(editGrams.replace(',', '.')) || 0);
-    return e.unitLabel && e.unitGrams ? n * e.unitGrams : n;
-  };
-
-  const saveEdit = async (e: DiaryEntry) => {
-    const g = editedGrams(e);
-    if (!(g > 0)) return;
-    const n = Math.max(0, Number(editGrams.replace(',', '.')) || 0);
-    await updateEntryGrams(e, per100Of(e, foodMap.get(e.foodId)), g, e.unitLabel ? n : undefined);
-    setEditingId(null);
-  };
 
   if (!profile || !targets) {
     return (
@@ -217,78 +341,26 @@ export default function Nutrition() {
           {MEALS.map((meal, i) => {
             const mealEntries = entries.filter((e) => e.mealType === meal);
             const mealCal = mealEntries.reduce((a, e) => a + e.calories, 0);
+            const mealProtein = mealEntries.reduce((a, e) => a + e.proteinG, 0);
             return (
-              <div key={meal} className={i > 0 ? 'border-t border-white/[0.06]' : ''}>
-                <div className="flex items-center justify-between px-4 pb-1.5 pt-3">
+              <div key={meal} className={`flex items-center gap-1 ${i > 0 ? 'border-t border-white/[0.06]' : ''}`}>
+                <button
+                  onClick={() => setDetailMeal(meal)}
+                  className="btn-tap min-w-0 flex-1 px-4 py-3 text-left"
+                >
                   <div className="text-sm font-bold">{MEAL_LABELS[meal]}</div>
-                  {mealCal > 0 && <div className="text-xs tabular-nums text-slate-400">{mealCal} kcal</div>}
-                </div>
-                {mealEntries.map((e) => {
-                  if (editingId === e.id) {
-                    const byUnit = !!e.unitLabel && !!e.unitGrams;
-                    const g = editedGrams(e);
-                    const preview = scaleTo(per100Of(e, foodMap.get(e.foodId)), g);
-                    return (
-                      <div key={e.id} className="border-y border-white/[0.06] bg-white/[0.03] px-4 py-2.5">
-                        <div className="truncate text-sm font-medium">{e.foodName}</div>
-                        <div className="mt-2 flex items-center gap-2">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            step={byUnit ? 0.5 : 1}
-                            autoFocus
-                            value={editGrams}
-                            onChange={(ev) => setEditGrams(ev.target.value)}
-                            onKeyDown={(ev) => ev.key === 'Enter' && saveEdit(e)}
-                            className="w-20 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1.5 text-center text-base font-bold"
-                            aria-label={byUnit ? e.unitLabel : 'Gram'}
-                          />
-                          <span className="text-xs text-slate-400">{byUnit ? e.unitLabel : 'g'}</span>
-                          <span className="flex-1 text-xs tabular-nums text-slate-400">
-                            → {preview.calories} kcal · P{preview.proteinG} K{preview.carbsG} Y{preview.fatG}
-                            {byUnit && <span className="text-slate-500"> · {Math.round(g)} g</span>}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex gap-2">
-                          <Button
-                            variant="secondary"
-                            className="flex-1 !py-1.5 !text-xs"
-                            onClick={() => setEditingId(null)}
-                          >
-                            İptal
-                          </Button>
-                          <Button className="flex-1 !py-1.5 !text-xs" disabled={!(g > 0)} onClick={() => saveEdit(e)}>
-                            Kaydet
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={e.id} className="flex items-center justify-between gap-2 px-4 py-1">
-                      <button onClick={() => startEdit(e)} className="min-w-0 flex-1 text-left">
-                        <div className="truncate text-sm">{e.foodName}</div>
-                        <div className="text-xs tabular-nums text-slate-500">
-                          {portionLabel(e)} · {e.calories} kcal
-                          <span className="ml-1 text-slate-600">✏️</span>
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => removeEntry(e.id)}
-                        className="btn-tap -mr-1 rounded-lg p-2 text-slate-600 active:bg-white/10"
-                        aria-label="Kaydı sil"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  );
-                })}
+                  <div className="text-xs tabular-nums text-slate-400">
+                    {mealEntries.length > 0
+                      ? `${mealCal} kcal · ${Math.round(mealProtein)}g protein`
+                      : 'Henüz besin eklenmedi'}
+                  </div>
+                </button>
                 <button
                   onClick={() => push({ t: 'foodPicker', mealType: meal })}
-                  className="btn-tap w-full px-4 pb-3 pt-1.5 text-left text-sm font-semibold text-emerald-400"
+                  aria-label={`${MEAL_LABELS[meal]} öğününe besin ekle`}
+                  className="btn-tap mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-lg font-semibold text-emerald-400 active:bg-emerald-400/20"
                 >
-                  + Besin ekle
+                  +
                 </button>
               </div>
             );
@@ -338,6 +410,20 @@ export default function Nutrition() {
           <span className="text-slate-500">›</span>
         </Card>
       </div>
+
+      {detailMeal && (
+        <MealDetail
+          meal={detailMeal}
+          entries={entries.filter((e) => e.mealType === detailMeal)}
+          foodMap={foodMap}
+          onClose={() => setDetailMeal(null)}
+          onAddFood={() => {
+            const meal = detailMeal;
+            setDetailMeal(null);
+            push({ t: 'foodPicker', mealType: meal });
+          }}
+        />
+      )}
     </div>
   );
 }
