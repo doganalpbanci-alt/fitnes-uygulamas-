@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { db, MEAL_LABELS, type FoodItem, type MealType } from '../db';
+import { useRef, useState } from 'react';
+import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
 import { LOW_CONFIDENCE, itemPer100, sendCorrection, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
 import { Button, Card } from '../components/ui';
 
@@ -36,6 +36,11 @@ export default function FoodItemsReview({
   const [correction, setCorrection] = useState('');
   const [correcting, setCorrecting] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // useState'in güncellemesi bir sonraki render'a kadar yansımadığı için hızlı art arda
+  // dokunmalarda (aynı senkron olay döngüsünde) "submitting" state'i hâlâ eski değeriyle
+  // okunabiliyordu — bu yüzden gerçek koruma senkron güncellenen bir ref üzerinden yapılıyor.
+  const submittingRef = useRef(false);
 
   const sendCorrectionMsg = async () => {
     const text = correction.trim();
@@ -115,9 +120,16 @@ export default function FoodItemsReview({
   const validItems = items.filter((it) => it.name.trim().length > 0);
 
   const confirm = async () => {
-    if (validItems.length === 0) return;
+    // İkinci dokunuşu yok say — aksi halde (özellikle AI analizinin doğal gecikmesiyle) art arda
+    // iki dokunuş aynı öğeleri iki kez günlüğe ekleyip öğün toplamını yanlış şişirebiliyordu.
+    if (validItems.length === 0 || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     const now = Date.now();
-    const date = new Date().toISOString().slice(0, 10);
+    // todayStr() ile aynı (yerel takvim) günü kullan — UTC tabanlı bir tarih burada gece yarısına
+    // yakın saatlerde (ör. UTC+3'te 00:00–03:00 arası) kaydı bir gün öncesine yazıp o günün
+    // öğün toplamından düşürüyordu.
+    const date = todayStr();
     const loggedAt = new Date().toISOString();
     for (let i = 0; i < validItems.length; i++) {
       const it = validItems[i];
@@ -319,8 +331,8 @@ export default function FoodItemsReview({
         </div>
       </Card>
 
-      <Button className="w-full" disabled={validItems.length === 0} onClick={confirm}>
-        {MEAL_LABELS[mealType]} Öğününe Ekle ({validItems.length} öğe)
+      <Button className="w-full" disabled={validItems.length === 0 || submitting} onClick={confirm}>
+        {submitting ? 'Ekleniyor…' : `${MEAL_LABELS[mealType]} Öğününe Ekle (${validItems.length} öğe)`}
       </Button>
     </>
   );

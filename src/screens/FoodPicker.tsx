@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
 import { BUILTIN_FOODS } from '../data/foods';
@@ -133,6 +133,10 @@ function GramsStep({
   onDone: () => void;
   onBack: () => void;
 }) {
+  const [submitting, setSubmitting] = useState(false);
+  // useState güncellemesi bir sonraki render'a kadar yansımadığı için hızlı art arda dokunmalarda
+  // hâlâ eski değeriyle okunabiliyordu — gerçek koruma senkron güncellenen bir ref üzerinden yapılıyor.
+  const submittingRef = useRef(false);
   // Besinin birimleri düzenlenebilir olduğu için state'te tutuluyor: kullanıcı burada yeni bir
   // birim tanımlayabiliyor ve bu birim besinle birlikte kalıcı olarak kaydediliyor.
   const [servings, setServings] = useState(() => normalizeServings(food.servings ?? []));
@@ -185,6 +189,10 @@ function GramsStep({
   };
 
   const confirm = async () => {
+    // İkinci dokunuşu yok say — aksi halde aynı kayıt iki kez eklenip öğün toplamı şişebiliyordu.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     // Burada tanımlanan birimler besinle kaydedilir; bir dahaki eklemede hazır gelir.
     await db.foods.put({ ...food, servings: servings.length ? servings : undefined });
     await db.diaryEntries.add({
@@ -318,8 +326,8 @@ function GramsStep({
             <div className="text-[10px] text-slate-400">Yağ</div>
           </div>
         </Card>
-        <Button className="w-full" disabled={!(g > 0)} onClick={confirm}>
-          Günlüğe Ekle
+        <Button className="w-full" disabled={!(g > 0) || submitting} onClick={confirm}>
+          {submitting ? 'Ekleniyor…' : 'Günlüğe Ekle'}
         </Button>
       </div>
     </div>
@@ -451,6 +459,8 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   const [describing, setDescribing] = useState(false);
   const [selection, setSelection] = useState<Map<string, FoodRow>>(new Map());
   const [showAllSameMeal, setShowAllSameMeal] = useState(false);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const bulkSubmittingRef = useRef(false);
 
   const myFoods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
   const diaryEntries = useLiveQuery(() => db.diaryEntries.toArray(), []) ?? [];
@@ -519,6 +529,9 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
   };
 
   const confirmBulk = async () => {
+    if (bulkSubmittingRef.current) return;
+    bulkSubmittingRef.current = true;
+    setBulkSubmitting(true);
     const date = todayStr();
     const loggedAt = new Date().toISOString();
     for (const row of selection.values()) {
@@ -777,8 +790,8 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
 
       {selection.size > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-[#070a14]/95 px-4 py-3 backdrop-blur-xl">
-          <Button className="w-full" onClick={confirmBulk}>
-            {selection.size} seçili · {MEAL_LABELS[mealType]} Öğününe Ekle
+          <Button className="w-full" disabled={bulkSubmitting} onClick={confirmBulk}>
+            {bulkSubmitting ? 'Ekleniyor…' : `${selection.size} seçili · ${MEAL_LABELS[mealType]} Öğününe Ekle`}
           </Button>
         </div>
       )}
