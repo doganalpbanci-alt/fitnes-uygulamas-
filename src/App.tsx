@@ -9,6 +9,7 @@ import Settings from './screens/Settings';
 import TemplateEditor from './screens/TemplateEditor';
 import Session from './screens/Session';
 import WorkoutSummary from './screens/WorkoutSummary';
+import SessionEdit from './screens/SessionEdit';
 import NutritionProfile from './screens/NutritionProfile';
 import FoodPicker from './screens/FoodPicker';
 import WeightHistory from './screens/WeightHistory';
@@ -52,6 +53,7 @@ function AppContent() {
   if (view.t === 'session') return <Session templateId={view.templateId} />;
   if (view.t === 'exerciseDetail') return <ExerciseDetail exerciseId={view.exerciseId} />;
   if (view.t === 'sessionSummary') return <WorkoutSummary sessionId={view.sessionId} />;
+  if (view.t === 'sessionEdit') return <SessionEdit sessionId={view.sessionId} />;
   if (view.t === 'nutritionProfile') return <NutritionProfile />;
   if (view.t === 'foodPicker') return <FoodPicker mealType={view.mealType} />;
   if (view.t === 'weightHistory') return <WeightHistory />;

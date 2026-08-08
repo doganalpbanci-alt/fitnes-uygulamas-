@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { DAY_NAMES, db, todayIndex, todayStr } from '../db';
+import { fmtDuration } from '../lib/format';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
 
@@ -12,6 +13,9 @@ export default function Workout() {
     start.setDate(start.getDate() - todayIndex());
     return db.sessions.where('date').aboveOrEqual(todayStr(start)).toArray();
   }, []) ?? [];
+  // Uygulama arka planda kapanıp yeniden açılmışsa (Android'de düşük bellekte sık yaşanır)
+  // bitmemiş bir antrenman taslağı burada belirip devam etme imkânı sunuyor.
+  const draft = useLiveQuery(() => db.activeSessionDraft.get(1), []);
 
   const tmplName = (id: number | null) => templates.find((t) => t.id === id)?.name;
   const today = todayIndex();
@@ -31,6 +35,34 @@ export default function Workout() {
         }
       />
       <div className="space-y-4 px-4">
+        {draft && (
+          <Card className="!border-emerald-400/25 !bg-gradient-to-br !from-emerald-400/10 !via-white/[0.02] !to-transparent space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⏳</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">Yarım kalan antrenman</div>
+                <div className="text-xs text-slate-400">
+                  {draft.templateName} · {fmtDuration(Date.now() - new Date(draft.startedAt).getTime())} önce başladı
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1 !py-2 !text-sm"
+                onClick={async () => {
+                  if (confirm('Yarım kalan antrenman silinsin mi?')) await db.activeSessionDraft.delete(1);
+                }}
+              >
+                Sil
+              </Button>
+              <Button className="flex-1 !py-2 !text-sm" onClick={() => push({ t: 'session', templateId: draft.templateId })}>
+                Devam Et
+              </Button>
+            </div>
+          </Card>
+        )}
+
         <div>
           <div className="mb-2 px-1 text-sm font-semibold text-slate-400">Haftalık Program</div>
           <Card className="!p-0">

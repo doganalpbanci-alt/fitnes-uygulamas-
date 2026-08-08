@@ -130,7 +130,10 @@ export default function Session({ templateId }: { templateId: number }) {
   const [template, setTemplate] = useState<WorkoutTemplate | null>(null);
   const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [confirmed, setConfirmed] = useState<boolean[][]>([]);
-  const [startedAt] = useState(() => new Date().toISOString());
+  // Taslaktan devam ediliyorsa gerçek başlangıç zamanı yüklenene kadar null kalır — bu yüzden
+  // sabit bir başlangıç değeriyle (ör. Date.now()) başlatılmıyor.
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [restoredFromDraft, setRestoredFromDraft] = useState(false);
   const [restSeconds, setRestSeconds] = useState(loadRestSeconds);
   const [customRestOpen, setCustomRestOpen] = useState(false);
   const [restTotal, setRestTotal] = useState(restSeconds);
@@ -151,6 +154,28 @@ export default function Session({ templateId }: { templateId: number }) {
   useEffect(() => {
     db.templates.get(templateId).then(async (t) => {
       if (!t) return back();
+
+      // Uygulama arka planda kapanıp yeniden açılmışsa (Android'de düşük bellekte sık
+      // yaşanır) bir taslak kalmış olabilir. Aynı şablona aitse kaldığı yerden devam et;
+      // başka bir antrenmana aitse kullanıcıya sorup onay almadan sessizce silmiyoruz —
+      // aksi hâlde tam da önlemeye çalıştığımız veri kaybını biz yaratmış oluruz.
+      const draft = await db.activeSessionDraft.get(1);
+      if (draft) {
+        if (draft.templateId === templateId) {
+          setTemplate(t);
+          setEntries(draft.entries);
+          setConfirmed(draft.confirmed);
+          setStartedAt(draft.startedAt);
+          setRestoredFromDraft(true);
+          return;
+        }
+        const discard = confirm(
+          `Bitirilmemiş "${draft.templateName}" antrenmanı var. Bu taslak silinip yeni antrenmana başlanılsın mı?`,
+        );
+        if (!discard) return back();
+        await db.activeSessionDraft.delete(1);
+      }
+
       setTemplate(t);
       const past = await db.sessions.orderBy('date').reverse().limit(50).toArray();
       const allEx = await db.exercises.toArray();
@@ -173,9 +198,32 @@ export default function Session({ templateId }: { templateId: number }) {
       });
       setEntries(nextEntries);
       setConfirmed(nextEntries.map((e) => e.sets.map(() => false)));
+      setStartedAt(new Date().toISOString());
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
+
+  // Devam eden antrenmanı her değişiklikte taslak olarak kaydet — uygulama arka planda
+  // kapanıp yeniden açılsa bile Workout sekmesinden kaldığı yerden devam edilebilsin.
+  useEffect(() => {
+    if (!template || !startedAt) return;
+    const id = setTimeout(() => {
+      if (entries.length === 0) {
+        db.activeSessionDraft.delete(1);
+        return;
+      }
+      db.activeSessionDraft.put({
+        id: 1,
+        templateId,
+        templateName: template.name,
+        startedAt,
+        entries,
+        confirmed,
+        updatedAt: new Date().toISOString(),
+      });
+    }, 400);
+    return () => clearTimeout(id);
+  }, [template, templateId, startedAt, entries, confirmed]);
 
   const setVal = (ei: number, si: number, patch: Partial<SessionEntry['sets'][number]>) =>
     setEntries((prev) =>
@@ -299,7 +347,7 @@ export default function Session({ templateId }: { templateId: number }) {
     });
 
   const saveSession = async (cleaned: SessionEntry[]) => {
-    if (!template) return;
+    if (!template || !startedAt) return;
     const session: WorkoutSession = {
       templateId,
       templateName: template.name,
@@ -309,6 +357,7 @@ export default function Session({ templateId }: { templateId: number }) {
       entries: cleaned,
     };
     const id = await db.sessions.add(session);
+    await db.activeSessionDraft.delete(1);
     push({ t: 'sessionSummary', sessionId: id });
   };
 
@@ -337,7 +386,7 @@ export default function Session({ templateId }: { templateId: number }) {
     await saveSession(getCleaned());
   };
 
-  if (!template) return null;
+  if (!template || !startedAt) return null;
   const elapsed = now - new Date(startedAt).getTime();
   const restActive = restRemaining != null;
 
@@ -346,7 +395,10 @@ export default function Session({ templateId }: { templateId: number }) {
       <ScreenHeader
         title={template.name}
         onBack={() => {
-          if (confirm('Antrenmandan çıkılsın mı? Girilenler kaydedilmez.')) back();
+          if (confirm('Antrenmandan çıkılsın mı? Girilenler kaydedilmez.')) {
+            db.activeSessionDraft.delete(1);
+            back();
+          }
         }}
         right={
           <Button className="!py-2" onClick={finish}>
@@ -355,6 +407,11 @@ export default function Session({ templateId }: { templateId: number }) {
         }
       />
       <div className="space-y-3 px-4">
+        {restoredFromDraft && (
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-center text-xs text-emerald-300">
+            ✓ Kaldığın yerden devam ediyorsun
+          </div>
+        )}
         <Card className="flex items-center justify-center gap-2 !py-2.5">
           <span className="text-slate-400">⏱️</span>
           <span className="text-lg font-bold tabular-nums">{fmtDuration(elapsed)}</span>
