@@ -3,10 +3,11 @@ import { db } from '../db';
 import { summarizeSession } from '../lib/workoutStats';
 import { fmtDate, fmtKg } from '../lib/format';
 import { useNav } from '../store';
-import { Card, ExerciseThumb, ScreenHeader, groupLabel } from '../components/ui';
+import { Button, Card, ExerciseThumb, ScreenHeader, groupLabel } from '../components/ui';
 
 export default function WorkoutSummary({ sessionId }: { sessionId: number }) {
   const back = useNav((s) => s.back);
+  const push = useNav((s) => s.push);
   const session = useLiveQuery(() => db.sessions.get(sessionId), [sessionId]);
   const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? [];
   const exMap = new Map(exercises.map((e) => [e.id, e]));
@@ -17,7 +18,15 @@ export default function WorkoutSummary({ sessionId }: { sessionId: number }) {
 
   return (
     <div className="pb-4">
-      <ScreenHeader title="Antrenman Özeti" onBack={back} />
+      <ScreenHeader
+        title="Antrenman Özeti"
+        onBack={back}
+        right={
+          <Button variant="secondary" className="!py-2" onClick={() => push({ t: 'sessionEdit', sessionId })}>
+            ✏️ Düzenle
+          </Button>
+        }
+      />
       <div className="space-y-3 px-4">
         <Card className="!border-emerald-400/20 !bg-gradient-to-br !from-emerald-400/[0.10] !via-white/[0.03] !to-transparent text-center animate-pop">
           <div className="text-3xl">🏆</div>

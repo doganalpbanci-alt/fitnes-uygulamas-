@@ -64,6 +64,20 @@ export interface WorkoutSession {
   entries: SessionEntry[];
 }
 
+/** Devam eden (henüz bitirilmemiş) bir antrenmanın anlık durumu — uygulama arka planda
+ * kapanıp yeniden açılırsa (özellikle Android'de düşük bellekte sık yaşanır) kaldığı yerden
+ * devam edilebilsin diye her değişiklikte buraya yazılır. Aynı anda tek bir antrenman
+ * yürütülebileceği için tekil kayıt olarak (id: 1) tutulur. */
+export interface ActiveSessionDraft {
+  id: number; // her zaman 1 — tekil taslak
+  templateId: number;
+  templateName: string;
+  startedAt: string;
+  entries: SessionEntry[];
+  confirmed: boolean[][];
+  updatedAt: string;
+}
+
 export interface Fast {
   id?: number;
   protocol: string;
@@ -161,6 +175,7 @@ class FitDB extends Dexie {
   foods!: Table<FoodItem, string>;
   diaryEntries!: Table<DiaryEntry, number>;
   bodyWeights!: Table<BodyWeightEntry, number>;
+  activeSessionDraft!: Table<ActiveSessionDraft, number>;
 
   constructor() {
     super('fittakip');
@@ -181,6 +196,18 @@ class FitDB extends Dexie {
       foods: 'id, source',
       diaryEntries: '++id, date, mealType',
       bodyWeights: '++id, date',
+    });
+    this.version(3).stores({
+      exercises: 'id, muscleGroup, type',
+      templates: '++id',
+      schedule: 'dayOfWeek',
+      sessions: '++id, date, templateId',
+      fasts: '++id, startedAt',
+      profile: 'id',
+      foods: 'id, source',
+      diaryEntries: '++id, date, mealType',
+      bodyWeights: '++id, date',
+      activeSessionDraft: 'id',
     });
     this.on('populate', async () => {
       await this.exercises.bulkAdd(SEED_EXERCISES);

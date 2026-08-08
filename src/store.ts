@@ -9,6 +9,7 @@ export type View =
   | { t: 'session'; templateId: number }
   | { t: 'exerciseDetail'; exerciseId: string }
   | { t: 'sessionSummary'; sessionId: number }
+  | { t: 'sessionEdit'; sessionId: number }
   | { t: 'nutritionProfile' }
   | { t: 'foodPicker'; mealType: MealType }
   | { t: 'weightHistory' };
