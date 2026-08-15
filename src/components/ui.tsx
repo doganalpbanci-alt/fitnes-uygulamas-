@@ -47,7 +47,17 @@ export function Button({
   );
 }
 
-export function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => void; right?: ReactNode }) {
+export function ScreenHeader({
+  title,
+  subtitle,
+  onBack,
+  right,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  right?: ReactNode;
+}) {
   return (
     <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-white/[0.04] bg-[#070a14]/80 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] backdrop-blur-xl">
       {onBack && (
@@ -61,7 +71,10 @@ export function ScreenHeader({ title, onBack, right }: { title: string; onBack?:
           </svg>
         </button>
       )}
-      <h1 className="flex-1 text-[22px] font-bold tracking-tight text-slate-50">{title}</h1>
+      <div className="flex-1">
+        <h1 className="text-[22px] font-bold tracking-tight text-slate-50">{title}</h1>
+        {subtitle && <div className="text-xs text-slate-500">{subtitle}</div>}
+      </div>
       {right}
     </div>
   );

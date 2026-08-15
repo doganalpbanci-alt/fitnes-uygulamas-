@@ -55,7 +55,7 @@ function AppContent() {
   if (view.t === 'sessionSummary') return <WorkoutSummary sessionId={view.sessionId} />;
   if (view.t === 'sessionEdit') return <SessionEdit sessionId={view.sessionId} />;
   if (view.t === 'nutritionProfile') return <NutritionProfile />;
-  if (view.t === 'foodPicker') return <FoodPicker mealType={view.mealType} />;
+  if (view.t === 'foodPicker') return <FoodPicker mealType={view.mealType} date={view.date} />;
   if (view.t === 'weightHistory') return <WeightHistory />;
 
   return (

@@ -11,7 +11,7 @@ export type View =
   | { t: 'sessionSummary'; sessionId: number }
   | { t: 'sessionEdit'; sessionId: number }
   | { t: 'nutritionProfile' }
-  | { t: 'foodPicker'; mealType: MealType }
+  | { t: 'foodPicker'; mealType: MealType; date?: string }
   | { t: 'weightHistory' };
 
 interface NavState {
