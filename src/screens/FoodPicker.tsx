@@ -13,6 +13,7 @@ import {
   type FrequentFood,
   type RecentFood,
 } from '../lib/foodSearch';
+import { fmtDate } from '../lib/format';
 import { GRAM_UNIT, fmtQty, normalizeServings } from '../lib/servings';
 import { useNav } from '../store';
 import { Button, Card, ScreenHeader } from '../components/ui';
@@ -121,6 +122,7 @@ function FoodRowCard({
 function GramsStep({
   food,
   mealType,
+  date,
   initialGrams,
   initialUnit,
   onDone,
@@ -128,6 +130,7 @@ function GramsStep({
 }: {
   food: FoodItem;
   mealType: MealType;
+  date: string;
   initialGrams?: number;
   initialUnit?: string;
   onDone: () => void;
@@ -196,7 +199,7 @@ function GramsStep({
     // Burada tanımlanan birimler besinle kaydedilir; bir dahaki eklemede hazır gelir.
     await db.foods.put({ ...food, servings: servings.length ? servings : undefined });
     await db.diaryEntries.add({
-      date: todayStr(),
+      date,
       mealType,
       foodId: food.id,
       foodName: food.name,
@@ -447,7 +450,7 @@ const TABS: { key: PickerTab; label: string }[] = [
   { key: 'sik', label: '⭐ Sık Yenenler' },
 ];
 
-export default function FoodPicker({ mealType }: { mealType: MealType }) {
+export default function FoodPicker({ mealType, date = todayStr() }: { mealType: MealType; date?: string }) {
   const back = useNav((s) => s.back);
   const [tab, setTab] = useState<PickerTab>('ara');
   const [query, setQuery] = useState('');
@@ -532,7 +535,6 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
     if (bulkSubmittingRef.current) return;
     bulkSubmittingRef.current = true;
     setBulkSubmitting(true);
-    const date = todayStr();
     const loggedAt = new Date().toISOString();
     for (const row of selection.values()) {
       // Sık/son yenenler satırları günlükten türetildiği için birim tanımı taşımaz; kayıtlı besin
@@ -567,6 +569,7 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
       <GramsStep
         food={opened.food}
         mealType={mealType}
+        date={date}
         initialGrams={opened.grams}
         initialUnit={opened.unitLabel}
         onBack={() => setOpened(null)}
@@ -581,7 +584,11 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-[#070a14]">
-      <ScreenHeader title={`${MEAL_LABELS[mealType]} · Besin Ekle`} onBack={back} />
+      <ScreenHeader
+        title={`${MEAL_LABELS[mealType]} · Besin Ekle`}
+        subtitle={date !== todayStr() ? fmtDate(date) : undefined}
+        onBack={back}
+      />
       <div className="px-4 pb-2">
         <div className="grid grid-cols-3 gap-1.5">
           {TABS.map((t) => (
@@ -796,8 +803,8 @@ export default function FoodPicker({ mealType }: { mealType: MealType }) {
         </div>
       )}
 
-      {scanning && <PhotoFoodScan mealType={mealType} onClose={() => setScanning(false)} onDone={back} />}
-      {describing && <TextFoodScan mealType={mealType} onClose={() => setDescribing(false)} onDone={back} />}
+      {scanning && <PhotoFoodScan mealType={mealType} date={date} onClose={() => setScanning(false)} onDone={back} />}
+      {describing && <TextFoodScan mealType={mealType} date={date} onClose={() => setDescribing(false)} onDone={back} />}
     </div>
   );
 }

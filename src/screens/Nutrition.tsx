@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, MEAL_LABELS, todayStr, type DiaryEntry, type FoodItem, type MealType } from '../db';
 import { useNutritionTargets } from '../lib/useTargets';
 import { per100Of, scaleTo, updateEntryGrams } from '../lib/diary';
+import { fmtDate } from '../lib/format';
 import { fmtQty, portionLabel } from '../lib/servings';
 import { computeNutritionWeeklyStats, type DayNutritionSummary } from '../lib/weeklyStats';
 import { useNav } from '../store';
@@ -118,12 +119,14 @@ function MacroBar({ label, consumed, target, color }: { label: string; consumed:
  * sağlayan detay ekranı — ana ekrandaki öğün satırına dokununca açılır. */
 function MealDetail({
   meal,
+  date,
   entries,
   foodMap,
   onClose,
   onAddFood,
 }: {
   meal: MealType;
+  date: string;
   entries: DiaryEntry[];
   foodMap: Map<string, FoodItem>;
   onClose: () => void;
@@ -167,7 +170,11 @@ function MealDetail({
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-[#070a14]">
-      <ScreenHeader title={`${MEAL_LABELS[meal]} Detayı`} onBack={onClose} />
+      <ScreenHeader
+        title={`${MEAL_LABELS[meal]} Detayı`}
+        subtitle={date !== todayStr() ? fmtDate(date) : undefined}
+        onBack={onClose}
+      />
       <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
         {entries.length > 0 && (
           <Card className="grid grid-cols-4 gap-2 text-center">
@@ -264,15 +271,68 @@ function MealDetail({
   );
 }
 
+function DaySwitcher({ date, onChange }: { date: string; onChange: (date: string) => void }) {
+  const today = todayStr();
+  const isToday = date === today;
+  const shift = (deltaDays: number) => {
+    const d = new Date(date + 'T00:00:00');
+    d.setDate(d.getDate() + deltaDays);
+    onChange(todayStr(d));
+  };
+  return (
+    <Card className="flex items-center gap-2 !py-2.5">
+      <button
+        onClick={() => shift(-1)}
+        aria-label="Önceki gün"
+        className="btn-tap flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-white/10"
+      >
+        ‹
+      </button>
+      <div className="relative flex-1 text-center">
+        <span className="text-sm font-semibold">{isToday ? 'Bugün' : fmtDate(date)}</span>
+        <input
+          type="date"
+          value={date}
+          max={today}
+          onChange={(e) => e.target.value && onChange(e.target.value)}
+          aria-label="Tarih seç"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
+      {isToday ? (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center text-slate-700">›</span>
+      ) : (
+        <button
+          onClick={() => shift(1)}
+          aria-label="Sonraki gün"
+          className="btn-tap flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-white/10"
+        >
+          ›
+        </button>
+      )}
+      {!isToday && (
+        <button
+          onClick={() => onChange(today)}
+          className="btn-tap shrink-0 rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-400 active:bg-emerald-400/20"
+        >
+          Bugün
+        </button>
+      )}
+    </Card>
+  );
+}
+
 export default function Nutrition() {
   const push = useNav((s) => s.push);
   const [weeklyOpen, setWeeklyOpen] = useState(false);
   const [detailMeal, setDetailMeal] = useState<MealType | null>(null);
+  const [selectedDate, setSelectedDate] = useState(() => todayStr());
   const profile = useLiveQuery(() => db.profile.get(1), []);
   const foods = useLiveQuery(() => db.foods.toArray(), []) ?? [];
   const foodMap = useMemo(() => new Map(foods.map((f) => [f.id, f])), [foods]);
   const today = todayStr();
-  const entries = useLiveQuery(() => db.diaryEntries.where('date').equals(today).toArray(), [today]) ?? [];
+  const entries =
+    useLiveQuery(() => db.diaryEntries.where('date').equals(selectedDate).toArray(), [selectedDate]) ?? [];
   const weekCutoff = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -328,6 +388,8 @@ export default function Nutrition() {
         }
       />
       <div className="space-y-3 px-4">
+        <DaySwitcher date={selectedDate} onChange={setSelectedDate} />
+
         <Card>
           <CalorieRing consumed={totals.calories} target={targets.calorieTarget} />
           <div className="mt-3 space-y-2.5">
@@ -356,7 +418,7 @@ export default function Nutrition() {
                   </div>
                 </button>
                 <button
-                  onClick={() => push({ t: 'foodPicker', mealType: meal })}
+                  onClick={() => push({ t: 'foodPicker', mealType: meal, date: selectedDate })}
                   aria-label={`${MEAL_LABELS[meal]} öğününe besin ekle`}
                   className="btn-tap mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-lg font-semibold text-emerald-400 active:bg-emerald-400/20"
                 >
@@ -414,13 +476,14 @@ export default function Nutrition() {
       {detailMeal && (
         <MealDetail
           meal={detailMeal}
+          date={selectedDate}
           entries={entries.filter((e) => e.mealType === detailMeal)}
           foodMap={foodMap}
           onClose={() => setDetailMeal(null)}
           onAddFood={() => {
             const meal = detailMeal;
             setDetailMeal(null);
-            push({ t: 'foodPicker', mealType: meal });
+            push({ t: 'foodPicker', mealType: meal, date: selectedDate });
           }}
         />
       )}

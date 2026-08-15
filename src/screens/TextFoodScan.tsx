@@ -7,10 +7,12 @@ import FoodItemsReview from './FoodItemsReview';
 
 export default function TextFoodScan({
   mealType,
+  date,
   onClose,
   onDone,
 }: {
   mealType: MealType;
+  date: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -107,6 +109,7 @@ export default function TextFoodScan({
             onMessagesChange={setMessages}
             initialReply={initialReply}
             mealType={mealType}
+            date={date}
             onDone={onDone}
           />
         )}

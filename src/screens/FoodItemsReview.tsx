@@ -22,6 +22,7 @@ export default function FoodItemsReview({
   onMessagesChange,
   initialReply,
   mealType,
+  date = todayStr(),
   onDone,
 }: {
   items: AiFoodItem[];
@@ -30,6 +31,7 @@ export default function FoodItemsReview({
   onMessagesChange: (messages: ChatMessage[]) => void;
   initialReply: string;
   mealType: MealType;
+  date?: string;
   onDone: () => void;
 }) {
   const [chatLog, setChatLog] = useState<ChatLogEntry[]>(() => [{ role: 'assistant', text: initialReply }]);
@@ -126,10 +128,6 @@ export default function FoodItemsReview({
     submittingRef.current = true;
     setSubmitting(true);
     const now = Date.now();
-    // todayStr() ile aynı (yerel takvim) günü kullan — UTC tabanlı bir tarih burada gece yarısına
-    // yakın saatlerde (ör. UTC+3'te 00:00–03:00 arası) kaydı bir gün öncesine yazıp o günün
-    // öğün toplamından düşürüyordu.
-    const date = todayStr();
     const loggedAt = new Date().toISOString();
     for (let i = 0; i < validItems.length; i++) {
       const it = validItems[i];

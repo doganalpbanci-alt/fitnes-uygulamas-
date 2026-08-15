@@ -8,10 +8,12 @@ import FoodItemsReview from './FoodItemsReview';
 
 export default function PhotoFoodScan({
   mealType,
+  date,
   onClose,
   onDone,
 }: {
   mealType: MealType;
+  date: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -146,6 +148,7 @@ export default function PhotoFoodScan({
             onMessagesChange={setMessages}
             initialReply={initialReply}
             mealType={mealType}
+            date={date}
             onDone={onDone}
           />
         )}
