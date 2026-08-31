@@ -1,5 +1,15 @@
 import { todayStr, type BodyWeightEntry, type DiaryEntry } from '../db';
 
+/** Bir günün "tam girildi" sayılıp haftalık/aylık ortalamaya dahil edilmesi için: kahvaltı VE
+ * akşam yemeği birlikte girilmiş olmalı (bazı kullanıcılar öğleyi hiç yemiyor, bu yüzden tek
+ * başına yeterli sayılmıyor), YA DA 2'den fazla öğün (3 veya 4) girilmiş olmalı. Sadece tek bir
+ * öğün (ör. bir kahve) girilen günler ortalamayı yanlış aşağı/yukarı çekmesin diye dışarıda
+ * bırakılıyor. */
+export function isNutritionDayComplete(rows: DiaryEntry[]): boolean {
+  const mealTypes = new Set(rows.map((r) => r.mealType));
+  return (mealTypes.has('kahvalti') && mealTypes.has('aksam')) || mealTypes.size > 2;
+}
+
 function startOfWeekStr(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
   const dow = (d.getDay() + 6) % 7; // 0 = Pazartesi
@@ -69,6 +79,8 @@ export interface DayNutritionSummary {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  /** isNutritionDayComplete() sonucu — false ise bu gün ortalamalara dahil edilmez. */
+  complete: boolean;
 }
 
 export interface NutritionWeeklyStats {
@@ -101,9 +113,10 @@ export function computeNutritionWeeklyStats(entries: DiaryEntry[]): NutritionWee
       proteinG: rows.reduce((a, r) => a + r.proteinG, 0),
       carbsG: rows.reduce((a, r) => a + r.carbsG, 0),
       fatG: rows.reduce((a, r) => a + r.fatG, 0),
+      complete: isNutritionDayComplete(rows),
     };
   });
-  const logged = days.filter((d) => d.calories > 0);
+  const logged = days.filter((d) => d.complete);
   const denom = logged.length || 1;
   const sum = (key: 'calories' | 'proteinG' | 'carbsG' | 'fatG') => logged.reduce((a, d) => a + d[key], 0);
   return {

@@ -31,11 +31,14 @@ function WeeklyCalorieBars({ days, target }: { days: DayNutritionSummary[]; targ
                   className={`w-full rounded-t-md ${
                     d.calories === 0
                       ? 'bg-white/[0.08]'
-                      : over
-                        ? 'bg-gradient-to-t from-rose-500 to-rose-400'
-                        : 'bg-gradient-to-t from-emerald-500 to-emerald-400'
+                      : !d.complete
+                        ? 'bg-amber-400/30'
+                        : over
+                          ? 'bg-gradient-to-t from-rose-500 to-rose-400'
+                          : 'bg-gradient-to-t from-emerald-500 to-emerald-400'
                   }`}
                   style={{ height: barH }}
+                  title={d.calories > 0 && !d.complete ? 'Eksik gün — ortalamaya dahil değil' : undefined}
                 />
               </div>
             );
@@ -439,24 +442,33 @@ export default function Nutrition() {
             </div>
           </button>
           {weeklyOpen &&
-            (weekly.daysLogged === 0 ? (
+            (!weekly.days.some((d) => d.calories > 0) ? (
               <div className="text-sm text-slate-400">Bu hafta henüz kayıt yok.</div>
             ) : (
               <>
                 <WeeklyCalorieBars days={weekly.days} target={targets.calorieTarget} />
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <div className="text-xs text-slate-400">Ort. kalori (kayıtlı günler)</div>
-                    <div className="font-bold tabular-nums">{weekly.avgCalories} kcal</div>
+                <div className="text-[10px] text-slate-500">
+                  🟠 eksik girilen gün (ör. tek öğün) — ortalamaya dahil edilmiyor
+                </div>
+                {weekly.daysLogged === 0 ? (
+                  <div className="text-sm text-slate-400">
+                    Bu hafta henüz tam girilmiş bir gün yok (kahvaltı + akşam ya da 3+ öğün) — ortalama hesaplanamıyor.
                   </div>
-                  <div>
-                    <div className="text-xs text-slate-400">Hedefe göre</div>
-                    <div className={`font-bold tabular-nums ${weekly.avgCalories > targets.calorieTarget ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {weekly.avgCalories > targets.calorieTarget ? '+' : ''}
-                      {weekly.avgCalories - targets.calorieTarget} kcal
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-slate-400">Ort. kalori (tam günler)</div>
+                      <div className="font-bold tabular-nums">{weekly.avgCalories} kcal</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-400">Hedefe göre</div>
+                      <div className={`font-bold tabular-nums ${weekly.avgCalories > targets.calorieTarget ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {weekly.avgCalories > targets.calorieTarget ? '+' : ''}
+                        {weekly.avgCalories - targets.calorieTarget} kcal
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </>
             ))}
         </Card>
