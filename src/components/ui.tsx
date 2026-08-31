@@ -1,6 +1,48 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { db, exerciseImageUrl, MUSCLE_GROUPS, type Exercise } from '../db';
 import { useNav } from '../store';
+
+/** Sayısal bir değere bağlı, ama alanın kendi yazı arabelleğini ayrı tutan input. Doğrudan bir
+ * sayıya bağlanıp her tuş vuruşunda `Number(...) || varsayılan` ile geri yazan alanlarda, kullanıcı
+ * mevcut değeri komple silince alan anında varsayılana ("0" ya da "1" gibi) dönüyor ve yazdığı yeni
+ * rakam bu fazladan hanenin önüne/arkasına ekleniyordu — kullanıcı sonra elle silmek zorunda
+ * kalıyordu. Burada alan boşken üst bileşene hiçbir şey bildirilmiyor (metin serbestçe boş
+ * kalabiliyor), yalnızca geçerli bir sayı yazıldığında `onChange` çağrılıyor; odak alandan
+ * çıktığında hâlâ boş/geçersizse son geçerli değere geri dönülüyor. */
+export function NumberField({
+  value,
+  onChange,
+  className = '',
+  ...rest
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  className?: string;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  const [text, setText] = useState(() => String(value));
+
+  useEffect(() => {
+    if (Number(text) !== value) setText(String(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <input
+      type="number"
+      value={text}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        if (raw.trim() !== '' && !isNaN(Number(raw))) onChange(Number(raw));
+      }}
+      onBlur={() => {
+        if (text.trim() === '' || isNaN(Number(text))) setText(String(value));
+      }}
+      className={className}
+      {...rest}
+    />
+  );
+}
 
 export function Card({ children, className = '', onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
   return (
