@@ -1,3 +1,6 @@
+import { BUILTIN_FOODS } from '../data/foods';
+import { fuzzyScoreWithAliases } from './foodSearch';
+
 const KEY_STORAGE = 'fittakip_openai_key';
 
 /** Anahtar yalnızca bu cihazda (localStorage) tutulur — Dexie'ye yazılmadığı için
@@ -27,6 +30,9 @@ export interface AiFoodItem {
   unitGrams?: number;
   /** Modelin bu öğe için kendi bildirdiği güven değeri (0–1). */
   confidence?: number;
+  /** Besin değerleri, AI'ın kendi tahmini yerine uygulamanın doğrulanmış veritabanından
+   * (USDA/TürKomp referanslı) alındıysa true — AI yalnızca besini tanıyıp gramaj tahmin etti. */
+  dbVerified?: boolean;
   /** Yalnızca arayüzde kullanılan, 100 g başına sabit taban. Gram değiştikçe besin değerleri
    * hep bu tabandan yeniden hesaplanır; böylece art arda yapılan düzenlemelerde yuvarlama
    * hatası birikmez. Kullanıcı kalori/makroyu elle değiştirince temizlenir, API'ye gönderilmez. */
@@ -117,6 +123,46 @@ function num(v: unknown): number {
   return typeof v === 'number' && isFinite(v) ? Math.max(0, v) : 0;
 }
 
+/** Bu skorun altındaki eşleşmeler kullanılmaz — LLM'lerin besin adını tanıması güvenilir olsa da
+ * (görsel/metinden), kalori-protein-karbonhidrat-yağ rakamlarını "ezbere" hatırlaması değil. Adı
+ * veritabanımızdaki (USDA/TürKomp referanslı, FoodPicker'da da kullanılan) bir besinle yeterince
+ * eşleşiyorsa AI'ın kendi besin değeri tahmini yerine bu doğrulanmış değerler kullanılır — AI
+ * sadece "ne" ve "ne kadar" (gramaj) tahminini yapmış olur. */
+const DB_MATCH_THRESHOLD = 0.72;
+
+interface BuiltinMatch {
+  per100: { calories: number; proteinG: number; carbsG: number; fatG: number };
+}
+
+/** Ad eşleşmesi bazen yanlış besinle sonuçlanabiliyor — "zeytin" araması, ad üzerinden kısayolla
+ * (startsWith) "Zeytinyağı"na "zeytin" alias'ından gelen doğru eşleşmeden daha yüksek puan
+ * verebiliyor (884 kcal/100g'lık yağ, ~130 kcal/100g'lık zeytin yerine seçilir). Paylaşılan arama
+ * skorlaması (FoodPicker'da da kullanıldığı için) burada değiştirilmiyor; bunun yerine AI'ın kendi
+ * kalori tahmini ile eşleşen besinin kalori yoğunluğu karşılaştırılıp aşırı sapan (aynı besin
+ * olması olası görünmeyen) eşleşmeler reddediliyor. */
+const CALORIE_DENSITY_TOLERANCE = 2.5;
+
+function matchBuiltinFood(name: string, aiCaloriesPer100Hint: number | undefined): BuiltinMatch | undefined {
+  let best: { food: (typeof BUILTIN_FOODS)[number]; score: number } | undefined;
+  for (const food of BUILTIN_FOODS) {
+    const score = fuzzyScoreWithAliases(name, food.name, food.aliases);
+    if (score >= DB_MATCH_THRESHOLD && (!best || score > best.score)) best = { food, score };
+  }
+  if (!best) return undefined;
+  if (aiCaloriesPer100Hint != null && aiCaloriesPer100Hint > 0 && best.food.caloriesPer100g > 0) {
+    const ratio = best.food.caloriesPer100g / aiCaloriesPer100Hint;
+    if (ratio > CALORIE_DENSITY_TOLERANCE || ratio < 1 / CALORIE_DENSITY_TOLERANCE) return undefined;
+  }
+  return {
+    per100: {
+      calories: best.food.caloriesPer100g,
+      proteinG: best.food.proteinPer100g,
+      carbsG: best.food.carbsPer100g,
+      fatG: best.food.fatPer100g,
+    },
+  };
+}
+
 /** Atwater katsayıları — makrolardan kalori: protein/karbonhidrat 4, yağ 9 kcal/g. */
 export function caloriesFromMacros(proteinG: number, carbsG: number, fatG: number): number {
   return proteinG * 4 + carbsG * 4 + fatG * 9;
@@ -192,6 +238,7 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
 
   const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
   const items: AiFoodItem[] = rawItems.map((it: Record<string, unknown>) => {
+    const name = typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin';
     const unitLabel = typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : undefined;
     const unitGrams = num(it.unitGrams) || undefined;
     const unitCount = num(it.unitCount) || undefined;
@@ -199,16 +246,39 @@ async function callChat(messages: ChatMessage[]): Promise<{ turn: AiChatTurn; me
     // Birim verildiyse gramajı birimden türet — modelin verdiği estimatedGrams ile
     // unitCount × unitGrams çelişirse birim bilgisi esas alınır.
     const grams = hasUnit ? unitCount! * unitGrams! : num(it.estimatedGrams) || 100;
-    const calories = Math.round(num(it.calories));
+    const rawConfidence = typeof it.confidence === 'number' && isFinite(it.confidence) ? it.confidence : undefined;
+
+    // Besinin adı veritabanımızdaki bilinen bir besinle eşleşiyorsa, AI'ın kendi kalori/makro
+    // tahmini yerine bu doğrulanmış değerler kullanılır — AI'ın işi burada sadece besini tanıyıp
+    // gramajını tahmin etmek olur; besin değerini "ezberden" hatırlaması güvenilmez.
+    const aiCalories = num(it.calories);
+    const aiCaloriesPer100Hint = grams > 0 ? (aiCalories / grams) * 100 : undefined;
+    const dbMatch = matchBuiltinFood(name, aiCaloriesPer100Hint);
+    if (dbMatch) {
+      const k = grams / 100;
+      return {
+        name,
+        grams,
+        calories: Math.round(dbMatch.per100.calories * k),
+        proteinG: Math.round(dbMatch.per100.proteinG * k * 10) / 10,
+        carbsG: Math.round(dbMatch.per100.carbsG * k * 10) / 10,
+        fatG: Math.round(dbMatch.per100.fatG * k * 10) / 10,
+        per100: dbMatch.per100,
+        dbVerified: true,
+        ...(hasUnit ? { unitLabel, unitCount, unitGrams } : {}),
+        ...(rawConfidence != null ? { confidence: Math.min(1, Math.max(0, rawConfidence)) } : {}),
+      };
+    }
+
+    const calories = Math.round(aiCalories);
     const macros = reconcileMacros({
       calories,
       proteinG: Math.round(num(it.proteinG) * 10) / 10,
       carbsG: Math.round(num(it.carbsG) * 10) / 10,
       fatG: Math.round(num(it.fatG) * 10) / 10,
     });
-    const rawConfidence = typeof it.confidence === 'number' && isFinite(it.confidence) ? it.confidence : undefined;
     return {
-      name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'Tanınan Besin',
+      name,
       grams,
       calories,
       proteinG: macros.proteinG,

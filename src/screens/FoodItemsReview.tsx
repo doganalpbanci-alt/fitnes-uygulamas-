@@ -99,7 +99,7 @@ export default function FoodItemsReview({
   /** Kalori/makro elle değiştirilince taban geçersizleşir; sonraki gram düzenlemesi yeni
    * değerlerden yeni bir taban türetir. */
   const updateMacro = (i: number, patch: Partial<AiFoodItem>) => {
-    updateItem(i, { ...patch, per100: undefined });
+    updateItem(i, { ...patch, per100: undefined, dbVerified: undefined });
   };
 
   const removeItem = (i: number) => {
@@ -177,6 +177,12 @@ export default function FoodItemsReview({
             <div className="flex items-center gap-1.5 text-xs text-amber-300">
               <span>⚠️</span>
               <span>AI bu öğeden emin değil (%{Math.round(it.confidence! * 100)}) — kontrol et</span>
+            </div>
+          )}
+          {it.dbVerified && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+              <span>✓</span>
+              <span>Besin değeri veritabanından doğrulandı</span>
             </div>
           )}
           <div className="flex items-center gap-2">
