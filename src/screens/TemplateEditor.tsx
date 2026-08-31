@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type TemplateExercise } from '../db';
 import { useNav } from '../store';
-import { Button, Card, ExerciseThumb, groupLabel, ScreenHeader } from '../components/ui';
+import { Button, Card, ExerciseThumb, groupLabel, NumberField, ScreenHeader } from '../components/ui';
 import ExercisePicker from '../components/ExercisePicker';
 
 export default function TemplateEditor({ id }: { id?: number }) {
@@ -117,34 +117,31 @@ export default function TemplateEditor({ id }: { id?: number }) {
                 <div className="grid grid-cols-4 gap-2 text-sm">
                   <label className="block">
                     <span className="text-xs text-slate-400">Set</span>
-                    <input
-                      type="number"
+                    <NumberField
                       inputMode="numeric"
                       min={1}
                       value={it.targetSets}
-                      onChange={(e) => update(i, { targetSets: Math.max(1, Number(e.target.value) || 1) })}
+                      onChange={(n) => update(i, { targetSets: Math.max(1, n) })}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
                   <label className="block">
                     <span className="text-xs text-slate-400">Tekrar min</span>
-                    <input
-                      type="number"
+                    <NumberField
                       inputMode="numeric"
                       min={1}
                       value={it.repMin}
-                      onChange={(e) => update(i, { repMin: Math.max(1, Number(e.target.value) || 1) })}
+                      onChange={(n) => update(i, { repMin: Math.max(1, n) })}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>
                   <label className="block">
                     <span className="text-xs text-slate-400">Tekrar max</span>
-                    <input
-                      type="number"
+                    <NumberField
                       inputMode="numeric"
                       min={1}
                       value={it.repMax}
-                      onChange={(e) => update(i, { repMax: Math.max(1, Number(e.target.value) || 1) })}
+                      onChange={(n) => update(i, { repMax: Math.max(1, n) })}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2"
                     />
                   </label>

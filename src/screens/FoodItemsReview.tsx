@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { db, MEAL_LABELS, todayStr, type FoodItem, type MealType } from '../db';
 import { LOW_CONFIDENCE, itemPer100, sendCorrection, type AiFoodItem, type ChatMessage } from '../lib/openaiVision';
-import { Button, Card } from '../components/ui';
+import { Button, Card, NumberField } from '../components/ui';
 
 interface ChatLogEntry {
   role: 'user' | 'assistant';
@@ -202,13 +202,12 @@ export default function FoodItemsReview({
           </div>
           {it.unitLabel && it.unitGrams != null && (
             <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2 py-1.5">
-              <input
-                type="number"
+              <NumberField
                 inputMode="decimal"
                 min={0}
                 step={0.5}
                 value={it.unitCount ?? 1}
-                onChange={(e) => updateUnitCount(i, Math.max(0, Number(e.target.value) || 0))}
+                onChange={(n) => updateUnitCount(i, Math.max(0, n))}
                 className="w-16 rounded-lg border border-white/10 bg-white/[0.04] px-1 py-1 text-center text-sm font-bold"
                 aria-label={`${it.unitLabel} adedi`}
               />
@@ -220,56 +219,51 @@ export default function FoodItemsReview({
           )}
           <div className="grid grid-cols-5 gap-1.5">
             <label className="block">
-              <input
-                type="number"
+              <NumberField
                 inputMode="numeric"
                 min={0}
                 value={it.grams}
-                onChange={(e) => updateGrams(i, Math.max(0, Number(e.target.value) || 0))}
+                onChange={(n) => updateGrams(i, Math.max(0, n))}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">gram</div>
             </label>
             <label className="block">
-              <input
-                type="number"
+              <NumberField
                 inputMode="numeric"
                 min={0}
                 value={it.calories}
-                onChange={(e) => updateMacro(i, { calories: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(n) => updateMacro(i, { calories: Math.max(0, n) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold text-emerald-400"
               />
               <div className="text-center text-[9px] text-slate-400">kcal</div>
             </label>
             <label className="block">
-              <input
-                type="number"
+              <NumberField
                 inputMode="decimal"
                 min={0}
                 value={it.proteinG}
-                onChange={(e) => updateMacro(i, { proteinG: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(n) => updateMacro(i, { proteinG: Math.max(0, n) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">P g</div>
             </label>
             <label className="block">
-              <input
-                type="number"
+              <NumberField
                 inputMode="decimal"
                 min={0}
                 value={it.carbsG}
-                onChange={(e) => updateMacro(i, { carbsG: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(n) => updateMacro(i, { carbsG: Math.max(0, n) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">K g</div>
             </label>
             <label className="block">
-              <input
-                type="number"
+              <NumberField
                 inputMode="decimal"
                 min={0}
                 value={it.fatG}
-                onChange={(e) => updateMacro(i, { fatG: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(n) => updateMacro(i, { fatG: Math.max(0, n) })}
                 className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-1 py-1.5 text-center text-sm font-bold"
               />
               <div className="text-center text-[9px] text-slate-400">Y g</div>
